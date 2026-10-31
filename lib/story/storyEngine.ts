@@ -219,6 +219,8 @@ export async function generateTurn(input: GenerateTurnInput): Promise<GeneratedT
           themeId: theme.id,
           planetProgress,
           arcGoal: arc.goal,
+          arcHook: arc.hook,
+          arcTwist: arc.twist,
           seedTone,
           restMode: ctx.seedPreset === "rest",
         }),
