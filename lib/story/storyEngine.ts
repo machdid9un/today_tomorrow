@@ -178,6 +178,8 @@ export async function generateTurn(input: GenerateTurnInput): Promise<GeneratedT
   // 시즌을 다 끝낸 별이면 회차별 고전 동화 뼈대를 이 별에 맞게 쓴다.
   const theme = themeFor(ctx.episodeId, ctx.themeId);
   const planetProgress = ctx.planets[theme.id] ?? null;
+  // 이 별에 처음 온 회차의 첫 장면: 세계관 소개가 들어가 조금 길어도 된다
+  const introTurn = !(planetProgress?.visits ?? 0) && (askName || turnIndex === 0);
   const arc = stageDirective(theme, planetProgress, plotPatternFor(ctx.episodeId));
   // 부모가 고른 '마음 담기'(용의 태도)는 회차 내내 깔리고, 갈림길 장면에는 한 줄 힌트로 얹힌다
   const seedTone = ctx.seedPreset ? await resolveSeedDirective(ctx.seedPreset, ctx.seedText) : null;
@@ -266,8 +268,9 @@ export async function generateTurn(input: GenerateTurnInput): Promise<GeneratedT
             : /이름/.test(raw.narration) // 이름 짓기 턴인데 질문이 빠진 경우
               ? "이 친구 이름을 뭐라고 지어 줄까용?"
               : `${withTopic(ctx.childName)} 어떻게 하고 싶어용?`,
-          // 안전 응답('어른에게 말하기')과 갈림길 장면(받아 주기 + 장면 설명 + 질문)은 잘리지 않게 4문장까지
-          mode === "safety" || mode === "seed" ? 5 : 4
+          // 안전 응답('어른에게 말하기')과 갈림길 장면(받아 주기 + 장면 설명 + 질문)은 잘리지 않게 5문장까지,
+          // 처음 온 별의 첫 장면(인사 + 세계관 + 역할 + 곤란 + 질문)은 6문장까지
+          introTurn ? 6 : mode === "safety" || mode === "seed" ? 5 : 4
         )
       : "";
   if (!narration) throw new Error("EMPTY_NARRATION");

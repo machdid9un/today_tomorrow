@@ -2,7 +2,7 @@
 // 원칙: 스토리 엔진은 이야기만 한다. 아이를 평가·분석하지 않고, 현실을 캐묻지 않는다.
 import type { StoryMemory } from "@/types";
 import type { ChatMessage } from "./llm";
-import { DRAGON_NAME, vocative } from "./persona";
+import { DRAGON_NAME, hasBatchim, vocative, withTopic } from "./persona";
 import { hasPersonalInfo } from "./safety";
 import { pickFromTheme, themeContext, themeFor, type PlanetProgress } from "./themes";
 
@@ -86,6 +86,22 @@ export interface StoryPromptInput {
   restMode?: boolean;
 }
 
+/** 이 별에 처음 온 회차인가 (세계관 소개가 필요한가) */
+export function isFirstVisit(p: Pick<StoryPromptInput, "planetProgress">): boolean {
+  return !(p.planetProgress?.visits ?? 0);
+}
+
+/**
+ * 첫 방문이면 첫 장면 앞에 세계관 소개(1~2문장) + 아이의 역할(1문장)을 넣게 하는 지시.
+ * 다시 온 별이면 빈 문자열(지난번 일을 떠올리는 지시가 따로 있다).
+ */
+function worldIntro(p: StoryPromptInput): string {
+  if (!isFirstVisit(p)) return "";
+  const theme = themeFor(p.episodeKey, p.themeId);
+  const name = p.childName ? withTopic(p.childName) : p.askName ? "(방금 말한 아이 이름)은/는" : "친구는";
+  return `[세계관 소개 — 이 별에 처음 왔으니 첫 장면 앞에 꼭] 별 이름과 이 별이 어떤 곳인지를 아이가 바로 그릴 수 있게 1~2문장으로 들려준다: "${theme.world.intro}" (뜻은 그대로, 말은 자연스럽게 다듬어도 된다). 이어서 아이에게 역할을 한 문장으로 준다: "오늘부터 ${name} ${theme.world.role}${hasBatchim(theme.world.role) ? "이에용" : "예용"}!"처럼. 그다음 단짝 친구의 곤란으로 넘어간다. 이번 턴만 5~6문장까지 괜찮다(인사 1 + 세계관 1~2 + 역할 1 + 곤란 1~2 + 질문 1). `;
+}
+
 function signalHint(p: StoryPromptInput): string {
   const theme = themeFor(p.episodeKey, p.themeId);
   const clue = pickFromTheme(theme.clues, p.episodeKey, 7);
@@ -95,7 +111,7 @@ function signalHint(p: StoryPromptInput): string {
   const rest = pool.filter((c) => c !== a);
   const b = pickFromTheme(rest, p.episodeKey, 19);
   if (p.arcHook) {
-    return `오늘의 별은 '${theme.planet}'(첫 장면에서 별 이름을 한 번 말한다). 소리 단서 '${clue}'로 시작해, 단짝 친구 ${theme.host.name}의 오늘 밤 곤란을 2문장으로 또렷하게 보여 준다: ${p.arcHook} (무엇을 바라는데 무엇이 막고 있는지가 들리게. 해결 방법은 아직 말하지 않는다.)`;
+    return `${worldIntro(p)}오늘의 별은 '${theme.planet}'(첫 장면에서 별 이름을 한 번 말한다). 소리 단서 '${clue}'로 시작해, 단짝 친구 ${theme.host.name}의 오늘 밤 곤란을 ${isFirstVisit(p) ? "1~2" : "2"}문장으로 또렷하게 보여 준다: ${p.arcHook} (무엇을 바라는데 무엇이 막고 있는지가 들리게. 해결 방법은 아직 말하지 않는다.)`;
   }
   const goal = p.arcGoal ? ` 오늘 밤의 목표는 '${p.arcGoal}'이고, 도와 달라는 소리는 이 목표와 이어진다(목표를 미리 다 말하지 말고 궁금하게 남긴다).` : "";
   return `오늘의 별은 '${theme.planet}'(첫 장면에서 별 이름을 한 번 말한다), 소리 단서는 '${clue}', 첫 질문의 후보는 '${a}'와 '${b}'다(그대로 베끼지 말고 자연스럽게 녹인다. 후보가 단서와 어울리지 않으면 이 별의 친구 중 어울리는 것으로 바꿔도 된다).${goal}`;
@@ -167,7 +183,7 @@ export function questionPlan(p: StoryPromptInput): string {
   } else if (p.turnIndex === 0) {
     parts.push(
       p.memory
-        ? `${p.planetProgress?.visits ? "이 별에 다시 왔다. 지난번 이 별에서 아이가 한 일(시즌 줄거리 참고)을 한 문장으로 반갑게 떠올린 뒤, " : ""}${p.arcHook ? `오늘 밤의 곤란을 보여 준다: ${p.arcHook} 그다음 ` : `오늘 밤 ${p.arcGoal ? `'${p.arcGoal}'을(를) 향해 ` : ""}`}무엇부터 할지 두 가지 보기로 묻는다('A할까용, 아니면 B할까용?').`
+        ? `${p.planetProgress?.visits ? "이 별에 다시 왔다. 지난번 이 별에서 아이가 한 일(시즌 줄거리 참고)을 한 문장으로 반갑게 떠올린 뒤, " : worldIntro(p)}${p.arcHook ? `오늘 밤의 곤란을 보여 준다: ${p.arcHook} 그다음 ` : `오늘 밤 ${p.arcGoal ? `'${p.arcGoal}'을(를) 향해 ` : ""}`}무엇부터 할지 두 가지 보기로 묻는다('A할까용, 아니면 B할까용?').`
         : `${signalHint(p)} 어디선가 그 소리로 누군가 도와 달라고 한다는 걸 들려준 뒤, 누구일지 짧은 한 문장으로 묻는다: '○○일까용, 아니면 △△일까용?'`
     );
   } else if (p.turnIndex > 0 && (!text || MINIMAL.test(compact(text)) || DONT_KNOW.test(text))) {
@@ -261,11 +277,11 @@ function turnInstruction(p: StoryPromptInput): string {
         parts.push(
           p.memory
             ? "새 이야기의 첫 장면이다. 아이 이름을 한 번 반갑게 부르고('○○야, 또 만났네용!'), 지난 이야기의 등장인물이나 물건 하나를 다시 등장시켜라."
-            : "새 이야기의 첫 장면이다. 아이 이름을 한 번 반갑게 부르고, 오늘의 별에 도착해 [이번 턴 질문]의 첫 장면(단짝 친구의 곤란)으로 시작해라."
+            : "새 이야기의 첫 장면이다. 아이 이름을 한 번 반갑게 부르고, 오늘의 별에 도착해 [이번 턴 질문]대로 (처음 온 별이면 세계관 소개부터) 단짝 친구의 곤란으로 시작해라."
         );
       } else if (p.askName) {
         parts.push(
-          `아이가 방금 자기 이름을 말했을 것이다. JSON에 "childName": "이름만"(예: "지우", 모르면 null)을 추가해라. 이름이 있으면 '○○야, 반가워용!'처럼 딱 한 번 반갑게 부르고(이름 끝 글자에 받침이 있으면 '아', 없으면 '야': 지우야, 민준아. 이름을 모르면 '친구야, 반가워용!'), 바로 오늘의 별 첫 장면으로 들어가라([이번 턴 질문]의 첫 장면대로). 사용법이나 대답 연습 같은 이야기는 하지 않는다.`
+          `아이가 방금 자기 이름을 말했을 것이다. JSON에 "childName": "이름만"(예: "지우", 모르면 null)을 추가해라. 이름이 있으면 '○○야, 반가워용!'처럼 딱 한 번 반갑게 부르고(이름 끝 글자에 받침이 있으면 '아', 없으면 '야': 지우야, 민준아. 이름을 모르면 '친구야, 반가워용!'), 이어서 [이번 턴 질문]의 세계관 소개와 첫 장면대로 오늘의 별로 들어가라. 사용법이나 대답 연습 같은 이야기는 하지 않는다.`
         );
       } else {
         parts.push("아이의 말을 반영해 이야기를 이어가라.");

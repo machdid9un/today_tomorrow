@@ -6,7 +6,7 @@
 
 export const DRAGON_NAME = "이야기 용";
 
-function hasBatchim(word: string): boolean {
+export function hasBatchim(word: string): boolean {
   const last = Array.from(word.trim()).pop();
   if (!last) return false;
   const code = last.charCodeAt(0);
