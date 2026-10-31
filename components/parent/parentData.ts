@@ -118,6 +118,14 @@ export function normalizeReport(raw: unknown): ParentReportOut | null {
 
   const moodWeather: MoodWeather | undefined = isMoodWeather(r.moodWeather) ? r.moodWeather : undefined;
 
+  // 담아 둔 마음이 어떻게 전해졌나 (PR #15). label·note가 있어야 카드가 뜬다.
+  let seedEcho: ParentReportOut["seedEcho"];
+  if (isObj(r.seedEcho)) {
+    const label = str(r.seedEcho.label);
+    const note = str(r.seedEcho.note);
+    if (label && note) seedEcho = { label, note, dragonLine: str(r.seedEcho.dragonLine), childQuote: str(r.seedEcho.childQuote) };
+  }
+
   return {
     summary: summary ?? "",
     childQuotes,
@@ -133,6 +141,7 @@ export function normalizeReport(raw: unknown): ParentReportOut | null {
     keywords,
     planet,
     seedSuggestions,
+    ...(seedEcho ? { seedEcho } : {}),
   };
 }
 
