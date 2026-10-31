@@ -1,6 +1,6 @@
 // GET /api/story/selftest — AI 엔진 자가 테스트 (역할 3 전용). 소유: 역할 3.
 // 서버 안에서 1화(여러 턴) → 회차 종료(노트·기억·동화책) → 2화 첫 턴을 실제 LLM으로 돌리고 결과를 JSON으로 준다.
-// 환경변수 STORY_SELFTEST=1 인 배포(역할 3의 테스트 프로젝트)에서만 동작한다. 팀 배포본에서는 404.
+// 로컬 개발 서버(npm run dev) 또는 STORY_SELFTEST=1 인 배포에서만 동작한다. 팀 배포본(운영)에서는 404.
 //
 // 쿼리(모두 선택):
 //   lines=지우야|용한테 가볼래|...   아이 발화 목록 ("|" 구분, turnIndex 1부터 차례로)
@@ -26,7 +26,8 @@ function randomTag(): string {
 }
 
 export async function GET(request: Request) {
-  if (process.env.STORY_SELFTEST !== "1") {
+  const enabled = process.env.NODE_ENV === "development" || process.env.STORY_SELFTEST === "1";
+  if (!enabled) {
     return new Response("Not Found", { status: 404 });
   }
 
