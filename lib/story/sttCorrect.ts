@@ -163,3 +163,111 @@ export function correctSttText(text: string, protect: string[] = []): string {
   }
   return out;
 }
+
+// ───────────────────────── 보기 우선 매칭 (아이 발음) ─────────────────────────
+// 아이가 화면 보기 중 하나를 말했는데 발음이 뭉개져 다르게 적힌 경우("따자" → "사자", "해바다기" → "해바라기"),
+// 자모 단위로 비교해 보기와 충분히 가까우면 그 보기로 붙인다. 아이가 보기 밖의 새 말을 했을 때 억지로 붙이지 않도록
+// 문턱을 보수적으로 두고, 두 보기가 비슷하게 가까우면 건드리지 않는다.
+
+const CHO = ["ㄱ", "ㄲ", "ㄴ", "ㄷ", "ㄸ", "ㄹ", "ㅁ", "ㅂ", "ㅃ", "ㅅ", "ㅆ", "ㅇ", "ㅈ", "ㅉ", "ㅊ", "ㅋ", "ㅌ", "ㅍ", "ㅎ"];
+const JUNG = ["ㅏ", "ㅐ", "ㅑ", "ㅒ", "ㅓ", "ㅔ", "ㅕ", "ㅖ", "ㅗ", "ㅘ", "ㅙ", "ㅚ", "ㅛ", "ㅜ", "ㅝ", "ㅞ", "ㅟ", "ㅠ", "ㅡ", "ㅢ", "ㅣ"];
+const JONG = ["", "ㄱ", "ㄲ", "ㄳ", "ㄴ", "ㄵ", "ㄶ", "ㄷ", "ㄹ", "ㄺ", "ㄻ", "ㄼ", "ㄽ", "ㄾ", "ㄿ", "ㅀ", "ㅁ", "ㅂ", "ㅄ", "ㅅ", "ㅆ", "ㅇ", "ㅈ", "ㅊ", "ㅋ", "ㅌ", "ㅍ", "ㅎ"];
+
+/** 한글을 자모 열로 (받침 없는 글자는 받침 자리를 비운다). 한글이 아니면 그대로 */
+function toJamo(s: string): string[] {
+  const out: string[] = [];
+  for (const ch of s.replace(/\s+/g, "")) {
+    const code = ch.charCodeAt(0) - 0xac00;
+    if (code < 0 || code > 11171) {
+      out.push(ch);
+      continue;
+    }
+    out.push(CHO[Math.floor(code / 588)], JUNG[Math.floor((code % 588) / 28)], JONG[code % 28]);
+  }
+  return out;
+}
+
+/** 4~7세가 자주 바꿔 내는 소리끼리는 '거의 같은 것'으로 (비용 0.25) */
+const CONFUSABLE: string[][] = [
+  ["ㅅ", "ㅆ", "ㅈ", "ㅉ", "ㅊ", "ㄷ", "ㄸ", "ㅌ"], // 사자→따자/짜자, 선생님→떤땡님
+  ["ㄹ", "ㄷ", "ㄴ"], // 해바라기→해바다기, 노란→노단
+  ["ㄱ", "ㄲ", "ㅋ", "ㄷ"], // 귤→뀰/듈
+  ["ㅂ", "ㅃ", "ㅍ"],
+  ["ㅐ", "ㅔ", "ㅒ", "ㅖ"],
+  ["ㅗ", "ㅜ", "ㅓ"],
+  ["ㅢ", "ㅣ", "ㅡ"],
+];
+const confusionGroup = new Map<string, number>();
+CONFUSABLE.forEach((g, i) => g.forEach((j) => confusionGroup.set(j, i)));
+
+function jamoCost(a: string, b: string): number {
+  if (a === b) return 0;
+  if (a === "" || b === "") return 0.3; // 받침 빠뜨림·덧붙임
+  const ga = confusionGroup.get(a);
+  return ga !== undefined && ga === confusionGroup.get(b) ? 0.25 : 1;
+}
+
+/** 자모 편집 거리 (0~1로 정규화). 0 = 같음 */
+function jamoDistance(a: string, b: string): number {
+  const x = toJamo(a);
+  const y = toJamo(b);
+  if (!x.length || !y.length) return 1;
+  const dp: number[][] = Array.from({ length: x.length + 1 }, () => new Array<number>(y.length + 1).fill(0));
+  for (let i = 0; i <= x.length; i++) dp[i][0] = i;
+  for (let j = 0; j <= y.length; j++) dp[0][j] = j;
+  for (let i = 1; i <= x.length; i++) {
+    for (let j = 1; j <= y.length; j++) {
+      dp[i][j] = Math.min(dp[i - 1][j] + 1, dp[i][j - 1] + 1, dp[i - 1][j - 1] + jamoCost(x[i - 1], y[j - 1]));
+    }
+  }
+  return dp[x.length][y.length] / Math.max(x.length, y.length);
+}
+
+const NEVER_SNAP = new Set(
+  ["몰라", "몰라요", "모르겠어", "모르겠어요", "글쎄", "응", "어", "음", "네", "아니", "아니야", "아니요", "싫어", "싫어요", "좋아", "좋아요", "둘다", "다른거", "잘래", "졸려", "그만", "그만할래", "무서워", "또", "다시", "뭐", "뭐라고", "왜"].map((x) => x.replace(/\s/g, ""))
+);
+
+/** 보기 글자에서 꼬리말(…할래/…갈래/…줄래/…한테 등)을 뗀 핵심 */
+function choiceCore(choice: string): string {
+  return choice
+    .replace(/\(.*?\)/g, "")
+    .replace(/(할래|갈래|줄래|볼래|들을래|쓸래|먹을래|부를래|한테|에게|으로|로|이랑|랑|하고|을|를|이|가|은|는)\s*$/u, "")
+    .trim();
+}
+
+/**
+ * 전사 결과가 화면 보기 중 하나의 '발음이 뭉개진 형태'면 그 보기로 바꾼다. 아니면 원문 그대로.
+ * - 짧은 대답(12자 이내)에만 쓴다. 긴 문장은 아이가 새 말을 한 것이다.
+ * - 보기 전체 또는 보기의 핵심 낱말과 자모 거리 0.34 이하이고, 2등 보기보다 뚜렷이 가까울 때만.
+ */
+export function snapToChoice(text: string, choices: string[]): string {
+  const t = text.trim().replace(/[.!?~…]+$/u, "");
+  if (!t || t.replace(/\s/g, "").length > 12 || choices.length === 0) return text;
+  const tNoSpace = t.replace(/\s/g, "");
+  // 흔한 대답(몰라·응·싫어·졸려…)은 보기와 비슷하게 들려도 그대로 둔다 — 그 말 자체가 뜻이다
+  if (NEVER_SNAP.has(tNoSpace)) return text;
+  // 첫소리가 다르면(ㅁ↔ㄴ 등 아이가 잘 안 바꾸는 소리) 같은 낱말로 보지 않는다
+  const firstOk = (core: string) => jamoCost(toJamo(tNoSpace)[0] ?? "", toJamo(core)[0] ?? "") <= 0.25;
+  const scored = choices
+    .map((c) => {
+      // 보기 전체, 꼬리말 뗀 핵심, 그리고 보기의 낱말 하나하나("빨강 사자" → "사자")와 비교한다
+      const cores = [...new Set([c, choiceCore(c), ...choiceCore(c).split(/\s+/)].map((x) => x.replace(/\s/g, "")).filter((x) => x.length >= 2))];
+      // 아이가 보기 핵심을 그대로 말한 경우(완전 포함)는 거리 0으로 본다
+      const contains = cores.some((x) => tNoSpace.includes(x) || x.includes(tNoSpace));
+      const candidates = cores.filter(firstOk);
+      const d =
+        contains && Math.min(...cores.map((x) => Math.abs(x.length - tNoSpace.length))) <= 2
+          ? 0
+          : candidates.length
+            ? Math.min(...candidates.map((x) => jamoDistance(tNoSpace, x)))
+            : 1;
+      return { c, d };
+    })
+    .sort((a, b) => a.d - b.d);
+  const best = scored[0];
+  const second = scored[1];
+  // 두 글자짜리 짧은 말은 모음 하나 차이로도 다른 낱말이라(노래/노랑) 더 엄격하게
+  if (!best || best.d > (tNoSpace.length <= 2 ? 0.2 : 0.3)) return text;
+  if (second && second.d - best.d < 0.15) return text; // 두 보기가 비슷하게 가까우면 건드리지 않는다
+  return best.c;
+}

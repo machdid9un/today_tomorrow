@@ -412,7 +412,7 @@ export function useVoiceAdventure({ episodeId, mode, themeId }: UseVoiceAdventur
     setErrorMessage(null);
     setPhase("requesting-permission");
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
       streamRef.current = stream;
     } catch {
       const message = "마이크 권한이 없어요. 아래 버튼으로 이야기를 골라볼까?";
