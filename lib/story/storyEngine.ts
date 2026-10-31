@@ -229,7 +229,11 @@ export async function generateTurn(input: GenerateTurnInput): Promise<GeneratedT
       ? trimNarration(
           raw.narration.trim(),
           shouldEnd,
-          askName ? "누가 신호를 보냈을까요?" : FALLBACK_QUESTION,
+          askName
+            ? "누가 신호를 보냈을까요?"
+            : /이름/.test(raw.narration) // 이름 짓기 턴인데 질문이 빠진 경우
+              ? "이 친구 이름을 뭐라고 지어 줄까요?"
+              : FALLBACK_QUESTION,
           // 안전 응답('어른에게 말하기')과 갈림길 장면(받아 주기 + 장면 설명 + 질문)은 잘리지 않게 4문장까지
           mode === "safety" || mode === "seed" ? 4 : 3
         )

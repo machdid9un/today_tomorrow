@@ -11,9 +11,12 @@ import { loadEpisodeContext, saveMockWorld, type EpisodeContext } from "./contex
 import { summarizeEpisode, type SummarizeEpisodeResult } from "./memorySummarizer";
 import { generateParentReport, type ParentReportOut } from "./reportGenerator";
 import { SEED_PRESET_SCENE_DIRECTIVES } from "./seedPresets";
+import { recommendSeeds } from "./seedRecommend";
 
 export interface FinalizeEpisodeResult {
   report: ParentReportOut | null;
+  /** true면 이번 회차에 씨앗 장면을 썼다 → worlds.next_seed_preset/next_seed_text를 비울 것 (역할 1) */
+  seedConsumed: boolean;
   summary: SummarizeEpisodeResult | null;
   /** 실패한 생성기 이름과 사유. 턴 기록은 이미 저장돼 있으니 재시도 가능. */
   errors: { step: "report" | "summary"; message: string }[];
@@ -25,6 +28,11 @@ function seedDirectiveFor(ctx: EpisodeContext): string | null {
   if (!ctx.seedPreset) return null;
   if (ctx.seedPreset === "custom") return ctx.seedText?.trim() || null;
   return SEED_PRESET_SCENE_DIRECTIVES[ctx.seedPreset] ?? null;
+}
+
+/** 씨앗 장면 턴까지 갔는가 (갔다면 씨앗을 '썼다'고 본다 → 역할 1 complete에서 next_seed_* 비우기 기준) */
+export function seedUsed(ctx: EpisodeContext): boolean {
+  return Boolean(ctx.seedPreset) && ctx.history.length >= 3;
 }
 
 export async function finalizeEpisode(
@@ -50,6 +58,11 @@ export async function finalizeEpisode(
 
   const errors: FinalizeEpisodeResult["errors"] = [];
   const report = reportResult.status === "fulfilled" ? reportResult.value : null;
+  if (report) {
+    // 결과 화면의 '다음 씨앗 추천' (아이 말 근거, 방금 쓴 씨앗 제외). report_json에 같이 저장된다.
+    const nameIdx = ctx.history[0]?.narration.includes("이름") ? 1 : null;
+    report.seedSuggestions = recommendSeeds(ctx.history, seedUsed(ctx) ? ctx.seedPreset : null, nameIdx);
+  }
   if (reportResult.status === "rejected") {
     errors.push({ step: "report", message: String(reportResult.reason) });
   }
@@ -61,5 +74,5 @@ export async function finalizeEpisode(
   if (summary) saveMockWorld(ctx, summary); // 메모리 모드에서만 동작
   if (errors.length) console.error("[story/finalize]", episodeId, errors);
 
-  return { report, summary, errors };
+  return { report, summary, errors, seedConsumed: seedUsed(ctx) };
 }

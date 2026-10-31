@@ -7,6 +7,7 @@
 import type { EndReason, ParentReport } from "@/types";
 import type { TurnRecord } from "./contextStore";
 import { chatJSON, hasLlmKey, REPORT_MODEL, type ChatMessage } from "./llm";
+import type { SeedSuggestion } from "./seedRecommend";
 import { isSafetyConcern, isSleepRequest } from "./storyEngine";
 
 export interface Observation {
@@ -21,6 +22,8 @@ export interface Observation {
 export type ParentReportOut = ParentReport & {
   observations: Observation[];
   observation: string;
+  /** 다음 씨앗 추천(아이 말 근거 포함). finalizeEpisode가 붙인다. report_json에 함께 저장됨. */
+  seedSuggestions?: SeedSuggestion[];
 };
 
 export interface GenerateReportInput {
@@ -235,6 +238,7 @@ export const REPORT_SYSTEM_PROMPT = `너는 '상상 무전기'의 관찰 노트 
    - inference: 1~2문장. 사실("~라고 말했어요", "~을 골랐어요")을 먼저 쓰고, 해석은 "~일 수 있어요", "~해 보였어요"처럼 부드럽게 쓰며 다른 이유일 수도 있다는 여지를 남긴다. 이야기 속 행동을 아이의 성격이나 현실 생활로 일반화하지 않는다. 근거가 부족하면 observations는 []로 둔다.
    - "졸려", "잘래", "그만할래" 같은 마무리 말과 이름을 묻는 질문에 대한 대답은 관찰·인용 대상이 아니다. 이야기 속 선택, 아이가 지어낸 이름·아이디어, 등장인물을 대하는 방식에 집중한다.
    - "토끼"처럼 질문에 한 단어로 답한 것 하나만으로는 추론하지 않는다. 의미 있는 선택이 하나뿐이면 observations는 1개만 쓴다.
+   - 씨앗 장면(부모가 고른 마음 주제)에서의 선택은 잘잘못·순응·발달 정도로 평가하지 않는다. "약속을 잘 지켰어요/안 지켰어요", "용기가 부족해요" 같은 판정 대신, 아이가 실제로 고르고 말한 것을 있는 그대로 적는다.
 5. lineForParent: 내일 보호자가 아이에게 건네볼 말 1개(반말). 아이가 실제로 한 말이나 고른 것을 떠올리게 하는 호기심 어린 질문으로. 평가·칭찬·훈계·정답 유도 금지. 예: "노랑이 기다려준 거 기억나? 그때 어떤 마음이었어?"
 6. 위험 신호(누가 때렸다, 다쳤다, 사라지고 싶다 등)는 summary·childQuotes·observations에 쓰지 않고 safetyFlags에만 짧게 적는다. 보호자가 따로 확인할 수 있게 하기 위함이다.
 7. safetyFlags: 아이가 스스로를 해치겠다는 말, 누군가에게 맞거나 괴롭힘을 당한다는 말, 주소·전화번호·학교 이름 같은 개인정보를 말했을 때만 짧은 한국어 라벨(예: "주소를 말함"). 이야기 속 상상 놀이(괴물과 싸우기 등)는 해당하지 않는다. 진단은 절대 넣지 않는다. 대부분은 [].

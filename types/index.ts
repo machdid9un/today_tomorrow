@@ -3,7 +3,8 @@
 export type Mode = "parent" | "kid";
 export type EpisodeStatus = "active" | "completed" | "interrupted";
 export type EndReason = "natural" | "sleep_request" | "silence" | "timeout" | "manual";
-export type SeedPreset = "friend" | "school" | "sibling" | "fear" | "new_place" | "custom";
+// 오늘의 씨앗 = 부모가 고르는 '마음 주제' (자유 입력 custom은 기본 비활성, 역할 3 seedPresets.ts 참고)
+export type SeedPreset = "kindness" | "courage" | "promise" | "share" | "new_place" | "retry" | "custom";
 
 export interface StoryMemory {
   characters: string[];
