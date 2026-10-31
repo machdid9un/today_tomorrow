@@ -9,7 +9,7 @@ import IslandList from "./IslandList";
 import KidShell, { useKidToast } from "./KidShell";
 import PlanetArt from "./PlanetArt";
 import PlanetMap from "./PlanetMap";
-import { GROUND, PLANETS, planetScale, readPlanet, savePlanet } from "./planets";
+import { DEFAULT_PLANET, GROUND, PLANETS, planetScale, readPlanet, savePlanet } from "./planets";
 import { startAdventure } from "./startAdventure";
 import styles from "./kid.module.css";
 
@@ -54,7 +54,7 @@ function DoorBody({ view, setView }: { view: View; setView: (v: View) => void })
   const demo = params.get("demo") === "1";
   const short = params.get("short") === "1";
   const toast = useKidToast();
-  const [current, setCurrent] = useState<PlanetId>(PLANETS[0].id);
+  const [current, setCurrent] = useState<PlanetId>(DEFAULT_PLANET);
   const [starting, setStarting] = useState(false);
   const [error, setError] = useState("");
   const [greeting, setGreeting] = useState<string | null>(null);

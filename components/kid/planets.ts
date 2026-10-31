@@ -51,6 +51,9 @@ const COPY: Record<PlanetId, Omit<PlanetView, "id" | "name" | "tag">> = {
 
 export const PLANETS: PlanetView[] = THEMES.map((t) => ({ id: t.id, name: t.planet, tag: t.tag, ...COPY[t.id] }));
 
+/** 처음 들어온 아이가 서는 별(시작 별). THEMES 순서·시즌 진행과는 무관하게 이 화면만의 기본값. */
+export const DEFAULT_PLANET: PlanetId = "rainbow";
+
 export const PLANET_KEY = "sangsang.planet";
 
 export function readPlanet(): PlanetId {
@@ -58,9 +61,9 @@ export function readPlanet(): PlanetId {
     const v = window.localStorage.getItem(PLANET_KEY);
     if (v && PLANETS.some((p) => p.id === v)) return v as PlanetId;
   } catch {
-    // 저장소가 막혀 있으면 첫 별로
+    // 저장소가 막혀 있으면 시작 별로
   }
-  return PLANETS[0].id;
+  return DEFAULT_PLANET;
 }
 
 export function savePlanet(id: PlanetId) {
