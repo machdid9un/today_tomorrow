@@ -164,7 +164,7 @@ export default function LoginScreen() {
 
           <div className={s.plan}>
             <span>
-              <b>월 9,900원</b> · 지금은 무료 체험
+              <b>월 8,900원</b> · 지금은 무료 체험 (2화)
             </span>
             <Link href={next} className={l.link}>
               돌아가기

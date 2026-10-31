@@ -555,7 +555,7 @@ export default function StoryParentApp({ seedCopy, initialTab = "report", initia
       {seedCard()}
       <div className={s.plan}>
         <span>
-          <b>월 9,900원</b> · 지금은 무료 체험
+          <b>월 8,900원</b> · 지금은 무료 체험 (2화)
         </span>
         <button type="button" onClick={() => goTab("settings")}>
           사전 신청
@@ -909,7 +909,7 @@ function Settings({ say, goKid, childName, ageLabel }: { say: (t: string) => voi
         <div className={s.row} style={{ marginTop: 12 }}>
           요금제
           <span>
-            <b style={{ color: "#1b1f2e" }}>월 9,900원</b> · 지금은 무료 체험
+            <b style={{ color: "#1b1f2e" }}>월 8,900원</b> · 지금은 무료 체험 (2화)
           </span>
         </div>
       </section>
