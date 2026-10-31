@@ -79,7 +79,8 @@ export function trimNarration(
   }
   if (maxSentences >= 4 && parts.length > maxSentences) {
     // 안전 응답: 앞의 위로·어른에게 말하기 문장을 지키고, 마지막 장면+질문을 남긴다
-    parts = [...parts.slice(0, 2), ...parts.slice(-2)];
+    const adult = parts.findIndex((x, i) => i >= 2 && i < parts.length - 2 && /(어른|선생님)/.test(x));
+    parts = adult >= 0 ? [parts[0], parts[adult], ...parts.slice(-2)] : [...parts.slice(0, 2), ...parts.slice(-2)];
   } else if (maxSentences < 4 && parts.length > 3) {
     const last = parts[parts.length - 1];
     // 마지막 질문이 바로 앞 문장을 가리키는 경우가 많아(예: "그건 무엇일까요?") 첫 문장 + 마지막 두 문장을 남긴다
@@ -251,6 +252,13 @@ export async function generateTurn(input: GenerateTurnInput): Promise<GeneratedT
         )
       : "";
   if (!narration) throw new Error("EMPTY_NARRATION");
+  // 위험 신호 응답에는 '믿을 수 있는 어른에게 말하기'가 꼭 들어가야 한다 (문장 줄이기에서 빠지면 코드가 넣는다)
+  if (mode === "safety" && !/(어른|선생님)/.test(narration)) {
+    const parts = splitSentences(narration);
+    const at = Math.min(2, Math.max(1, parts.length - 1));
+    parts.splice(at, 0, "선생님이나 가까운 어른에게 꼭 이야기해 줘용.");
+    narration = parts.join(" ");
+  }
   // 이야기 용 말투: 문장 끝 '요' → '용' (모델이 빠뜨려도 코드가 맞춘다. 다른 인물의 따옴표 대사는 그대로)
   narration = toYongStyle(narration);
 
