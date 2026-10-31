@@ -88,6 +88,18 @@ export default function ParentDataProvider({
         if (ctrl.signal.aborted) return;
         if (worldId) writeStorage(WORLD_KEY, worldId);
       }
+
+      // worldId를 하나도 못 찾았으면(로그인도 안 했고, 전에 놀아 본 적도 없는 기기) 예시 데이터로
+      // 속이지 않고 "쌓인 데이터 없음" 상태로 바로 보여 준다. ?mock=1이면 이 분기를 건너뛴다.
+      if (!worldId && !forceMock) {
+        setKids([]);
+        setSource("empty");
+        setToday(new Date().toISOString());
+        setActiveKey(null);
+        setStatus("ready");
+        return;
+      }
+
       const real = forceMock ? null : await fetchChildFromApi(worldId, ctrl.signal);
       if (ctrl.signal.aborted) return;
       const list = real ? [real] : mockChildren();

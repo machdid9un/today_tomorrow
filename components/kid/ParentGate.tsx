@@ -5,6 +5,7 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import styles from "./kid.module.css";
+import { readWorldId } from "./world";
 
 const HOLD_MS = 2000;
 
@@ -102,7 +103,11 @@ export default function ParentGate({ href = "/parent", label = "부모님", larg
       return;
     }
     setOpen(false);
-    router.push(href);
+    // 이 기기가 이미 아는 세계(게스트든 로그인이든)가 있으면 실어 보낸다 — 안 그러면 부모 화면이
+    // 그 데이터를 못 찾아 "쌓인 데이터 없음"으로 보인다(HandoffScreen과 같은 방식).
+    const worldId = href.includes("worldId=") ? null : readWorldId();
+    const dest = worldId ? `${href}${href.includes("?") ? "&" : "?"}worldId=${encodeURIComponent(worldId)}` : href;
+    router.push(dest);
   };
 
   return (

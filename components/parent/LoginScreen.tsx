@@ -69,7 +69,15 @@ export default function LoginScreen() {
       return;
     }
     markLoggedIn();
-    if (result.worldId) saveWorldId(result.worldId);
+    if (result.worldId) {
+      saveWorldId(result.worldId);
+      // ParentDataProvider는 kid/world.ts와 다른(별도) localStorage 키를 쓰고, 그건 ?worldId= 쿼리로
+      // 받을 때만 채워진다(HandoffScreen과 같은 방식) — 안 붙이면 로그인 후에도 부모 화면이
+      // "쌓인 데이터 없음"으로 보인다.
+      const sep = next.includes("?") ? "&" : "?";
+      router.push(`${next}${sep}worldId=${encodeURIComponent(result.worldId)}`);
+      return;
+    }
     router.push(next);
   };
 

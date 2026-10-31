@@ -13,7 +13,7 @@ import {
   type WeeklyEpisodeInput,
 } from "@/lib/story/weeklyReport";
 
-export type DataSource = "api" | "mock";
+export type DataSource = "api" | "mock" | "empty";
 
 export interface ParentEpisode extends WeeklyEpisodeInput {
   status: string | null;

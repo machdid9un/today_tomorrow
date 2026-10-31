@@ -831,6 +831,14 @@ export default function StoryParentApp({ seedCopy, initialTab = "report", initia
         <main aria-busy={status === "loading"}>
           {status === "loading" ? (
             <p className={s.empty}>기록을 불러오는 중이에요…</p>
+          ) : source === "empty" && tab !== "settings" ? (
+            <div className={s.empty}>
+              <p>아직 쌓인 이야기가 없어요.</p>
+              <p>아이와 모험을 시작하면 여기에 교신 리포트와 동화책이 쌓여요.</p>
+              <button type="button" className={s.btn} onClick={goKid} style={{ marginTop: 12 }}>
+                아이 화면으로 가기
+              </button>
+            </div>
           ) : openEp ? (
             episodeView(openEp)
           ) : tab === "report" ? (
