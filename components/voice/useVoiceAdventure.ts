@@ -5,7 +5,6 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { EndReason } from "@/types";
 import { OrderedAudioQueue } from "./audioQueue";
 import { iterateSSE, parseJSONData } from "./sse";
-import { isSleepPhrase } from "./sleepPhrases";
 import {
   DEFAULT_VOICE_SESSION_CONFIG,
   type SessionPhase,
@@ -37,8 +36,12 @@ export function useVoiceAdventure({ episodeId, mode }: UseVoiceAdventureOptions)
   const speechEndedAtRef = useRef<number>(0);
   const silenceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const hardTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const pendingSleepEndRef = useRef(false);
   const endedRef = useRef(false);
+  // /api/story/turn 계약(역할 3): turnIndex는 0부터(0=오프닝, childText=""), prevLatencyMs는
+  // "바로 전 턴" 응답 지연을 다음 요청에 실어 보내 turns.latency_ms를 역순으로 채운다.
+  const turnIndexRef = useRef(0);
+  const prevLatencyMsRef = useRef<number | null>(null);
+  const recordingMimeTypeRef = useRef<string>("audio/webm");
 
   const config = DEFAULT_VOICE_SESSION_CONFIG;
 
@@ -112,7 +115,19 @@ export function useVoiceAdventure({ episodeId, mode }: UseVoiceAdventureOptions)
 
     clearSilenceTimer();
     chunksRef.current = [];
-    const recorder = new MediaRecorder(streamRef.current);
+
+    // 사파리는 audio/webm을 지원하지 않고 보통 audio/mp4로 녹음한다. 브라우저가 실제로
+    // 지원하는 포맷을 골라야 STT로 보낼 때 포맷이 안 맞아 실패하는 걸 막을 수 있다.
+    const PREFERRED_MIME_TYPES = ["audio/webm", "audio/mp4", "audio/ogg"];
+    const supportedMimeType =
+      typeof MediaRecorder.isTypeSupported === "function"
+        ? PREFERRED_MIME_TYPES.find((type) => MediaRecorder.isTypeSupported(type))
+        : undefined;
+    recordingMimeTypeRef.current = supportedMimeType ?? "audio/webm";
+
+    const recorder = supportedMimeType
+      ? new MediaRecorder(streamRef.current, { mimeType: supportedMimeType })
+      : new MediaRecorder(streamRef.current);
     mediaRecorderRef.current = recorder;
 
     recorder.ondataavailable = (event) => {
@@ -120,7 +135,7 @@ export function useVoiceAdventure({ episodeId, mode }: UseVoiceAdventureOptions)
     };
     recorder.onstop = () => {
       speechEndedAtRef.current = performance.now();
-      const blob = new Blob(chunksRef.current, { type: "audio/webm" });
+      const blob = new Blob(chunksRef.current, { type: recordingMimeTypeRef.current });
       chunksRef.current = [];
       void processUtterance(blob);
     };
@@ -141,8 +156,13 @@ export function useVoiceAdventure({ episodeId, mode }: UseVoiceAdventureOptions)
       setPhase("transcribing");
       let text = "";
       try {
+        const extension = recordingMimeTypeRef.current.includes("mp4")
+          ? "mp4"
+          : recordingMimeTypeRef.current.includes("ogg")
+            ? "ogg"
+            : "webm";
         const form = new FormData();
-        form.append("audio", blob, "utterance.webm");
+        form.append("audio", blob, `utterance.${extension}`);
         const res = await fetch("/api/transcribe", { method: "POST", body: form });
         if (!res.ok) throw new Error("transcribe failed");
         const data = (await res.json()) as { text?: string };
@@ -160,10 +180,7 @@ export function useVoiceAdventure({ episodeId, mode }: UseVoiceAdventureOptions)
       }
 
       setLastChildText(text);
-      if (isSleepPhrase(text)) {
-        // 종료는 코드가 최종 판정 (README §4). 엔진에게 짧은 마무리 멘트만 요청하고 강제 종료합니다.
-        pendingSleepEndRef.current = true;
-      }
+      // "잘래/졸려" 등 취침 발화 감지는 서버(역할 3 storyEngine.isSleepRequest)가 담당합니다.
       await runTurn(text);
       // eslint-disable-next-line react-hooks/exhaustive-deps
     },
@@ -175,7 +192,6 @@ export function useVoiceAdventure({ episodeId, mode }: UseVoiceAdventureOptions)
       // 선택지 버튼 폴백 (STT 실패·마이크 없음 등). 음성과 동일한 경로로 처리.
       setErrorMessage(null);
       setLastChildText(choiceText);
-      if (isSleepPhrase(choiceText)) pendingSleepEndRef.current = true;
       await runTurn(choiceText);
       // eslint-disable-next-line react-hooks/exhaustive-deps
     },
@@ -187,6 +203,8 @@ export function useVoiceAdventure({ episodeId, mode }: UseVoiceAdventureOptions)
       setPhase("thinking");
       clearSilenceTimer();
 
+      const turnIndex = turnIndexRef.current;
+
       let res: Response;
       try {
         res = await fetch("/api/story/turn", {
@@ -195,7 +213,12 @@ export function useVoiceAdventure({ episodeId, mode }: UseVoiceAdventureOptions)
             "Content-Type": "application/json",
             Accept: "text/event-stream",
           },
-          body: JSON.stringify({ episodeId, childText }),
+          body: JSON.stringify({
+            episodeId,
+            childText,
+            turnIndex,
+            prevLatencyMs: prevLatencyMsRef.current,
+          }),
         });
       } catch {
         setErrorMessage("잠깐 쉬었다가 다시 이야기해 보자.");
@@ -231,9 +254,15 @@ export function useVoiceAdventure({ episodeId, mode }: UseVoiceAdventureOptions)
             queue.enqueue(payload.index, payload.text);
             if (!firstPlaybackLogged) {
               firstPlaybackLogged = true;
-              const latencyMs = performance.now() - speechEndedAtRef.current;
-              // TODO(역할 1·3 확인): 이 값을 turns.latency_ms로 어디에 보내 저장할지 합의 필요.
-              console.info("[voice] first-sentence latency ms:", Math.round(latencyMs));
+              // turnIndex 0(오프닝)은 아이 발화로 트리거된 게 아니라 측정 기준이 없음.
+              if (turnIndex > 0 && speechEndedAtRef.current > 0) {
+                const latencyMs = Math.round(performance.now() - speechEndedAtRef.current);
+                console.info("[voice] first-sentence latency ms:", latencyMs);
+                // 이번 턴(turnIndex)의 지연을 다음 요청에 실어 보내면, 서버가 turns.latency_ms(turnIndex-1 row)에 채워넣음.
+                prevLatencyMsRef.current = latencyMs;
+              } else {
+                prevLatencyMsRef.current = null;
+              }
             }
           } else if (evt.event === "turn_complete") {
             const payload = parseJSONData<TurnCompletePayload>(evt.data);
@@ -258,6 +287,7 @@ export function useVoiceAdventure({ episodeId, mode }: UseVoiceAdventureOptions)
       if (!turnComplete) {
         queue.setExpectedCount(sentences.length);
       }
+      turnIndexRef.current = turnIndex + 1;
       // eslint-disable-next-line react-hooks/exhaustive-deps
     },
     [episodeId, clearSilenceTimer]
@@ -267,21 +297,11 @@ export function useVoiceAdventure({ episodeId, mode }: UseVoiceAdventureOptions)
     async (turnComplete: TurnCompletePayload | null, _sentences: TurnSentence[]) => {
       if (endedRef.current) return;
 
-      if (pendingSleepEndRef.current) {
-        await endEpisode("sleep_request");
-        return;
-      }
-
-      const elapsedMs = performance.now() - episodeStartedAtRef.current;
-      const pastHardTimeout = elapsedMs >= config.hardTimeoutMs;
-      const canEndNaturally = elapsedMs >= config.naturalEndAfterMs;
-
-      if (pastHardTimeout) {
-        await endEpisode("timeout");
-        return;
-      }
-      if (turnComplete?.shouldEnd && canEndNaturally) {
-        await endEpisode("natural");
+      // 종료 여부는 서버(역할 3 storyEngine.decideMode)가 하드 타임아웃·취침 발화·자연 종료를
+      // 이미 판정해서 shouldEnd/endingReason으로 내려줍니다 (README §4 "코드가 최종 판정").
+      // 클라이언트의 hardTimeoutRef는 네트워크 문제 등에 대비한 별도 안전장치로만 둡니다.
+      if (turnComplete?.shouldEnd) {
+        await endEpisode(turnComplete.endingReason ?? "natural");
         return;
       }
 
@@ -289,7 +309,7 @@ export function useVoiceAdventure({ episodeId, mode }: UseVoiceAdventureOptions)
       startListening();
       // eslint-disable-next-line react-hooks/exhaustive-deps
     },
-    [config.hardTimeoutMs, config.naturalEndAfterMs, endEpisode, startListening]
+    [endEpisode, startListening]
   );
 
   const start = useCallback(async () => {
@@ -309,9 +329,10 @@ export function useVoiceAdventure({ episodeId, mode }: UseVoiceAdventureOptions)
       void endEpisode("timeout");
     }, config.hardTimeoutMs);
 
-    startListening();
+    // turnIndex 0: 아이 발화 없이 오프닝 멘트를 받아옵니다 (README §3-A "이름이 뭐야?" 등).
+    await runTurn("");
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [config.hardTimeoutMs, endEpisode, startListening]);
+  }, [config.hardTimeoutMs, endEpisode, runTurn]);
 
   const endManually = useCallback(() => {
     void endEpisode("manual");
