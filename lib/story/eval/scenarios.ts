@@ -77,4 +77,6 @@ export const EVAL_SCENARIOS: EvalScenario[] = [
   { id: "s28", title: "감정 표현(무서워, 엄마 보고 싶어)", age: 5, persona: "조금 불안해함", seed: "courage", lines: ["다은", S, "무서워", "엄마 보고 싶어", S, "졸려"] },
   { id: "s29", title: "먹을 것에 꽂힌 아이", age: 6, persona: "먹는 이야기만 함", seed: "rest", lines: ["준우", "배고파", "피자 먹을래", S, "아이스크림 섬", "졸려"] },
   { id: "s30", title: "긴 회차(8턴)", age: 7, persona: "모험을 좋아하고 성실하게 대답", seed: "company", lines: ["유나", S, S, S, S, S, S, "졸려"] },
+  { id: "s31", title: "긴 회차(졸리다는 말 없이 계속 대답)", age: 7, persona: "모험을 좋아하고 성실하게 대답함. 졸려하지 않고 계속 이야기하고 싶어 함", seed: null, lines: ["지호", S, S, S, S, S, S, S, S, S, S, S, S, S, S] },
+  { id: "s32", title: "긴 회차·4세(짧게 대답, 졸리다는 말 없음)", age: 4, persona: "1~3단어로 짧게 대답하지만 끝까지 대답함", seed: "company", lines: ["서윤", S, S, S, S, S, S, S, S, S, S, S, S] },
 ];

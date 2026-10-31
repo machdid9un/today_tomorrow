@@ -117,7 +117,11 @@ function isRepeat(p: StoryPromptInput): boolean {
 }
 const CHILD_ASKED = /(\?|뭐야|몇\s*살|어디야|누구야|왜\s|왜$|뭐\s*좋아|좋아해\??$)/;
 const FEELING = /(무서워|무서운\s*거|무섭|슬퍼|슬프|보고\s*싶어|외로워|울고\s*싶|울었|무섭다)/;
-const WIND_DOWN_TURN = 5; // 이 턴부터는 잠자리 쪽으로 차분하게
+// 회차 길이(리드 확정: 최소 7턴, 최대 15턴)에 맞춘 단계:
+// 1~2 시작 → 3 갈림길 → 4 '어떻게' → 5~7 행성 놀이로 목표를 향해 → 8 아이 말로 해결 → 9~ 잠자리 → 10턴 무렵 마무리
+const DEVELOP_TURN = 5; // 이 턴부터 목표를 향해 진행 (새 인물 금지)
+const WIND_DOWN_TURN = 8; // 이 턴부터 해결 + 잠자리 쪽으로 차분하게
+export const WRAP_UP_TURN = 10; // 이 턴부터는 마무리하도록 강하게 권함 (상한 15턴은 storyEngine)
 
 /**
  * 턴별 질문 설계 (대화식 읽기의 PEER·CROWD를 이야기 용과의 놀이에 맞게 줄인 것).
@@ -170,9 +174,14 @@ export function questionPlan(p: StoryPromptInput): string {
       rainbow: "아이의 선택을 이어 준 뒤, 찾은 색으로 무엇을 칠할지 또는 누구누구를 섞어 깨울지 아이가 정하게 묻는다('누구를 섞어서 깨워 볼까용?').",
     };
     parts.push(`${how[theme.id] ?? "아이의 선택을 이야기로 이어 주고, 그 선택을 '어떻게' 해 볼지 묻는다(예: '어떻게 도와줄까용?')."}${withExamples}`);
-  } else if (p.turnIndex >= (p.restMode ? WIND_DOWN_TURN - 1 : WIND_DOWN_TURN)) {
+  } else if (p.turnIndex >= (p.restMode ? WIND_DOWN_TURN - 2 : WIND_DOWN_TURN)) {
     parts.push(
       "이제 잠잘 시간 쪽으로 이야기를 천천히 가라앉힌다. 처음에 도와 달라고 한 일(오늘 밤 목표)이 아직 안 풀렸으면 이번에 아이가 앞에서 한 말 덕분에 풀리게 하고, 아이 말이 이 별을 어떻게 바꿨는지 한 문장으로 보여 준다. 새 위험이나 큰 사건은 만들지 않는다. 별빛·바람 소리 같은 조용한 장면 뒤에, 친구에게 해 줄 말이나 함께 보고 싶은 것처럼 포근하고 짧은 질문 하나를 한다(보기를 말로 늘어놓지 않는다)."
+    );
+  } else if (p.turnIndex >= DEVELOP_TURN) {
+    parts.push(
+      "오늘 밤 목표를 향해 한 걸음 나아간다. 이 별의 놀이(질문 방식 참고)를 앞과 다른 거리로 한 번 더 아이가 직접 하게 묻는다. 새 인물·새 장소·새 위기는 만들지 않고(오늘의 문제는 처음 도와 달라고 한 일 하나), 이미 나온 친구와 아이가 정한 이름·물건을 다시 불러 쓴다. 목표는 아직 다 풀지 않는다(조금 뒤 아이 말로 풀린다)." +
+        (young ? " 어린 아이에겐 짧은 예시 두 개를 붙인다." : "")
     );
   } else if (p.turnIndex === 2) {
     const theme = themeFor(p.episodeKey, p.themeId);
@@ -238,7 +247,9 @@ function turnInstruction(p: StoryPromptInput): string {
       parts.push(questionPlan(p));
       if (p.canSuggestEnd) {
         parts.push(
-          `이야기가 자연스럽게 마무리될 시점이라면 shouldEnd를 true, endingReason을 "natural"로 하고, narration은 질문 없는 따뜻한 결말 2문장, choices는 []로 해라. 아직이면 계속 이어가라.`
+          p.turnIndex >= WRAP_UP_TURN
+            ? `이제 마무리할 때다. 오늘 밤 목표가 아이 덕분에 풀린 것을 한 문장으로 보여 주고, 질문 없이 따뜻한 결말 2문장으로 끝내라. shouldEnd는 true, endingReason은 "natural", choices는 [].`
+            : `이야기가 자연스럽게 마무리될 시점이라면(오늘 밤 목표가 풀렸으면) shouldEnd를 true, endingReason을 "natural"로 하고, narration은 질문 없는 따뜻한 결말 2문장, choices는 []로 해라. 아직이면 계속 이어가라.`
         );
       }
       return parts.join(" ");
@@ -265,7 +276,9 @@ export function buildStoryMessages(p: StoryPromptInput): ChatMessage[] {
     },
   ];
 
-  for (const t of p.history.slice(-10)) {
+  // 긴 회차에서도 처음 설정(누가 도와 달라고 했는지, 지은 이름)을 잊지 않게: 처음 3턴 + 최근 8턴
+  const shown = p.history.length > 11 ? [...p.history.slice(0, 3), ...p.history.slice(-8)] : p.history;
+  for (const t of shown) {
     if (t.childText) messages.push({ role: "user", content: t.childText });
     if (t.narration) messages.push({ role: "assistant", content: t.narration });
   }
