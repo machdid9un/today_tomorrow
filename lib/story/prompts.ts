@@ -203,13 +203,15 @@ export function phaseFor(opts: {
   if (t > windDown) return "sleep";
   if (t === windDown) return "resolve";
   if (t === 5) return villainDue ? "villain" : "second";
-  return villainDue ? "second" : "payoff"; // 6 (방해꾼이 나온 밤은 두 번째 시도에 마지막 조각까지)
+  return "payoff"; // 6
 }
 
 /** 뼈대 단계별 지시 (아이 상태 처리 뒤에 붙는다) */
 function beatLine(p: StoryPromptInput, young: boolean): string {
   const n = p.night;
-  const ex = young ? " 어린 아이에겐 질문에 짧은 예시 두 개를 붙인다('○○할까용, △△할까용?'). choices도 그 둘." : " 예시 답은 choices에만 넣는다.";
+  const ex = young
+    ? " 어린 아이에겐 질문에 짧은 예시 두 개를 붙인다('○○할까용, △△할까용?'). choices도 그 둘."
+    : " 7세 이상에겐 'A할까용, B할까용?' 고르기 대신 아이가 자기 말로 채우는 열린 질문을 하고(앞 문장의 단서로 한두 단어로 답할 수 있게), 예시 답은 choices에만 넣는다.";
   if (!n) return "이 별의 놀이로 아이가 직접 정할 거리를 묻는다." + ex;
   switch (p.phase) {
     case "choose": {
@@ -225,11 +227,9 @@ function beatLine(p: StoryPromptInput, young: boolean): string {
     case "how":
       return `뜻밖의 결과를 보고 아이가 다음에 어떻게 할지 묻는다. 질문 바로 앞 문장에 답의 단서를 하나 심는다(${n.hostName}이(가) 눈치챈 것, 가진 것, 앞에서 아이가 정한 것 중 하나): '…이 반짝이는 것 같아용. 이번엔 어떻게 해 볼까용?'. 막연한 '어떻게 할까용?'만 던지지 않는다. 아이의 첫 생각을 버리지 말고 거기에 보태는 쪽으로. 새 인물·새 장소는 만들지 않는다.${ex}`;
     case "villain":
-      return `방해꾼 등장: ${n.villain.name}(${n.villain.desc})이(가) 나타나 오늘 밤 해 놓은 것을 하나 망쳐 놓는다(무섭지 않게, 장난처럼). 쫓는 법: ${n.villain.repel} 지금 가진 것: ${n.items} 가진 것이 있으면 무엇을 쓸지, 없으면 어떻게 쫓을지 아이가 정하게 묻는다.${ex} 다음 턴에 쫓아낸 뒤 이 말을 꼭 넣는다: "${n.villain.hint}"`;
-    case "second": {
-      const afterVillain = p.history[p.history.length - 1]?.narration.includes(n.villain.name);
-      return `${afterVillain ? `아이가 방금 정한 방법 그대로(아이가 '만나게 하기'를 골랐으면 만나게 하고, '쫓기'를 골랐으면 쫓는다. 참고: ${n.villain.repel}) ${n.villain.name}이(가) 물러난다(다치지 않게). 가면서 이 말을 그대로 넣는다: "${n.villain.hint}" 그다음 ` : ""}두 번째 시도: 아이의 새 생각대로 하자 거의 다 되는데 한 조각이 남는다. 이때 ${n.hostName}이(가) 진짜 이유를 한 문장으로 알려 준다: ${n.key} 그 이유에 맞춰 마지막으로 무엇을 할지(앞에서 아이가 정한 것이나 가진 것을 어떻게 쓸지) 아이가 정하게 묻는다. 새 인물·새 장소·새 위기는 만들지 않는다.${ex}`;
-    }
+      return `방해꾼이 잠깐 끼어드는 턴(이 한 턴 안에서 끝낸다): ${n.villain.name}(${n.villain.desc})이(가) 나타나 오늘 밤 해 놓은 것을 하나 살짝 망쳐 놓는다(무섭지 않게, 장난처럼, 1문장). 아이가 앞에서 정한 것이나 지금 가진 것(${n.items})으로 바로 물러나게 한다(1문장. 참고: ${n.villain.repel}). 가면서 이 말을 그대로 넣는다: "${n.villain.hint}" 그다음 오늘 밤 곤란으로 돌아와, ${n.hostName}이(가) 진짜 이유를 한 문장으로 알려 준다: ${n.key} 그 이유에 맞춰 다음에 무엇을 할지 아이가 정하게 묻는다(질문 앞 문장에 단서).${ex}`;
+    case "second":
+      return `두 번째 시도: 아이의 새 생각대로 하자 거의 다 되는데 한 조각이 남는다. 이때 ${n.hostName}이(가) 진짜 이유를 한 문장으로 알려 준다: ${n.key} 그 이유에 맞춰 마지막으로 무엇을 할지(앞에서 아이가 정한 것이나 가진 것을 어떻게 쓸지) 아이가 정하게 묻는다(질문 앞 문장에 단서). 새 인물·새 장소·새 위기는 만들지 않는다.${ex}`;
     case "payoff":
       return `마지막 조각: 아이가 앞에서 정한 이름·주문·방법이나 지금 가진 것(${n.items})이 다시 나와 해결 직전까지 간다(아이 덕분에). 그것을 어떻게 쓸지, 또는 마지막 한 마디를 뭐라고 할지 아이에게 짧게 묻는다(질문 앞 문장에 그 물건·이름을 단서로 보여 준다). 새 인물·위기는 만들지 않는다.${ex}`;
     case "resolve":

@@ -597,7 +597,7 @@ function planetBlock(planet: SummarizeEpisodeInput["planet"]): string[] {
   return [
     `[오늘의 별] ${theme.planet} — ${theme.tag}. 놀이: ${theme.play}.`,
     `시즌 줄거리: ${progressLine(theme, progress, night ?? null)}`,
-    `오늘 밤 목표: ${goal}.${night ? ` 곤란: ${night.hook} 해결 장면(대화에서 실제로 그렇게 됐을 때만): ${night.resolve} 얻는 것: ${night.reward.name}.` : ""}${theme.id === "rainbow" && night && !night.finale ? ` 오늘 색을 되찾았다면 이제 일곱 색 중 ${7 - found + 1}가지를 되찾은 것이다.` : ""}`,
+    `오늘 밤 목표: ${goal}.${night ? ` 곤란: ${night.hook} 얻는 것: ${night.reward.name}. (해결 장면은 대화에 실제로 나온 대로만 쓴다. 아이가 이름·주문을 말하지 않았으면 지은 것처럼 쓰지 않는다.)` : ""}${theme.id === "rainbow" && night && !night.finale ? ` 오늘 색을 되찾았다면 이제 일곱 색 중 ${7 - found + 1}가지를 되찾은 것이다.` : ""}`,
     "",
   ];
 }
