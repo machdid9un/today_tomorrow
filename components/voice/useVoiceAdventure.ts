@@ -49,6 +49,9 @@ export function useVoiceAdventure({ episodeId, mode, themeId }: UseVoiceAdventur
   // phase는 React state라 콜백 안에서 참조하면 클로저가 오래된 값을 볼 수 있다.
   // VAD 콜백처럼 "지금 진짜 리스닝 중인가"를 즉시 판단해야 하는 곳에 쓴다.
   const phaseRef = useRef<SessionPhase>("idle");
+  // choices도 같은 이유(처음 녹음 때 얼린 startRecording 클로저가 오래된 choices를 볼 수 있음)로
+  // ref에 담아 둔다. STT keyterms에 "방금 화면에 보여준 보기"를 실어 보낼 때 씀(§7).
+  const choicesRef = useRef<string[]>([]);
   // 턴이 겹쳐 돌아가는 것(오디오 중복 재생)을 막는 2차 안전장치.
   const turnInFlightRef = useRef(false);
 
@@ -57,6 +60,10 @@ export function useVoiceAdventure({ episodeId, mode, themeId }: UseVoiceAdventur
   useEffect(() => {
     phaseRef.current = phase;
   }, [phase]);
+
+  useEffect(() => {
+    choicesRef.current = choices;
+  }, [choices]);
 
   const clearSilenceTimer = useCallback(() => {
     if (silenceTimerRef.current) {
@@ -236,6 +243,11 @@ export function useVoiceAdventure({ episodeId, mode, themeId }: UseVoiceAdventur
             : "webm";
         const form = new FormData();
         form.append("audio", blob, `utterance.${extension}`);
+        // STT 인식 정확도 향상(docs/stt-vocab-v2.md §7): 지금 별·화면 보기를 같이 보내면
+        // 서버가 keyterms를 만들어 ElevenLabs에 힌트로 넘긴다.
+        form.append("episodeId", episodeId);
+        if (themeId) form.append("themeId", themeId);
+        if (choicesRef.current.length) form.append("choices", JSON.stringify(choicesRef.current));
         const res = await fetch("/api/transcribe", { method: "POST", body: form });
         if (!res.ok) throw new Error("transcribe failed");
         const data = (await res.json()) as { text?: string };

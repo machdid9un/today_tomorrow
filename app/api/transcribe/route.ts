@@ -1,8 +1,11 @@
 // POST /api/transcribe — 오디오 → text (STT). 소유: 역할 2.
 // 입력: multipart/form-data, field "audio" (Blob, 브라우저 MediaRecorder 산출물, webm/mp4/ogg)
+//   선택 필드: episodeId, themeId(오늘의 별), choices(JSON 배열, 방금 화면에 보여준 보기) —
+//   있으면 keyterms(docs/stt-vocab-v2.md) 구성에 쓴다. 없어도 동작은 그대로(그냥 공통 낱말만 씀).
 // 출력: { text: string }
 // 공급자: ElevenLabs Scribe (scribe_v2). .env.local에 ELEVENLABS_API_KEY 필요.
 import { NextResponse } from "next/server";
+import { buildSttKeyterms } from "@/lib/story/sttContext";
 
 export const runtime = "nodejs";
 
@@ -36,6 +39,29 @@ export async function POST(request: Request) {
   const upstreamForm = new FormData();
   upstreamForm.append("file", audio, "utterance");
   upstreamForm.append("model_id", "scribe_v2"); // ElevenLabs STT는 model_id 필수
+
+  // keyterms: 아이가 말할 법한 낱말을 미리 알려줘 인식 정확도를 올린다(docs/stt-vocab-v2.md §7).
+  // episodeId가 없으면(다른 호출부·과거 클라이언트) keyterms 없이 그대로 전사한다 — 실패해도 전사를 막지 않음.
+  const episodeId = form.get("episodeId");
+  const themeId = form.get("themeId");
+  const choicesRaw = form.get("choices");
+  let choices: string[] = [];
+  if (typeof choicesRaw === "string") {
+    try {
+      const parsed = JSON.parse(choicesRaw);
+      if (Array.isArray(parsed)) choices = parsed.filter((c): c is string => typeof c === "string");
+    } catch {
+      /* 보기 파싱 실패해도 keyterms 없이 진행 */
+    }
+  }
+  if (typeof episodeId === "string" && episodeId) {
+    try {
+      const keyterms = await buildSttKeyterms(episodeId, choices, typeof themeId === "string" ? themeId : null);
+      for (const term of keyterms) upstreamForm.append("keyterms", term);
+    } catch {
+      /* keyterms 준비 실패해도 전사 자체는 계속한다 */
+    }
+  }
 
   let upstreamRes: Response;
   try {

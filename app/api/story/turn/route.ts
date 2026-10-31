@@ -7,6 +7,7 @@
 // 주의: POST라서 브라우저 EventSource로는 못 받음. fetch + response.body.getReader()로 읽을 것.
 import { applyThemeId, loadEpisodeContext, saveTurn } from "@/lib/story/contextStore";
 import { generateTurn, splitSentences } from "@/lib/story/storyEngine";
+import { correctSttText } from "@/lib/story/sttCorrect";
 import { isLikelySttHallucination } from "@/lib/story/sttContext";
 
 export const runtime = "nodejs";
@@ -67,7 +68,15 @@ export async function POST(request: Request) {
         const turnIndex = requestedTurnIndex ?? ctx.history.length;
         const elapsedSeconds = Math.max(0, Math.floor((Date.now() - ctx.startedAt) / 1000));
 
-        const turn = await generateTurn({ ctx, childText, turnIndex, elapsedSeconds, forceEnd, short });
+        // STT 보정(docs/stt-vocab-v2.md §6·§7-2): 환각 걸러내기 → 보정 사전 → 밤 판정 순서.
+        // 아이 이름·아이가 이 별에서 지은 이름은 보호 목록으로 넘겨 치환에서 뺀다.
+        const protectedWords = [
+          ...(ctx.childName ? [ctx.childName] : []),
+          ...Object.values(ctx.planets).flatMap((p) => p?.collected ?? []),
+        ];
+        const correctedChildText = childText ? correctSttText(childText, protectedWords) : childText;
+
+        const turn = await generateTurn({ ctx, childText: correctedChildText, turnIndex, elapsedSeconds, forceEnd, short });
 
         splitSentences(turn.narration).forEach((text, index) => send("sentence", { index, text }));
         send("turn_complete", {
@@ -78,7 +87,7 @@ export async function POST(request: Request) {
 
         await saveTurn(ctx, {
           turnIndex,
-          childText,
+          childText: correctedChildText,
           narration: turn.narration,
           choices: turn.choices,
           prevLatencyMs,
@@ -86,7 +95,8 @@ export async function POST(request: Request) {
         });
 
         console.log(
-          `[story/turn] ep=${episodeId} turn=${turnIndex}${requestedTurnIndex === null ? "(auto)" : ""} ${Date.now() - t0}ms end=${turn.shouldEnd}`
+          `[story/turn] ep=${episodeId} turn=${turnIndex}${requestedTurnIndex === null ? "(auto)" : ""} ${Date.now() - t0}ms end=${turn.shouldEnd}` +
+            (correctedChildText !== childText ? ` stt_corrected="${childText}"→"${correctedChildText}"` : "")
         );
       } catch (err) {
         console.error("[story/turn] failed", err);
