@@ -7,7 +7,7 @@
 import type { EndReason, ParentReport } from "@/types";
 import type { TurnRecord } from "./contextStore";
 import { chatJSON, hasLlmKey, REPORT_MODEL, type ChatMessage } from "./llm";
-import { isSleepRequest } from "./storyEngine";
+import { isSafetyConcern, isSleepRequest } from "./storyEngine";
 
 export interface Observation {
   inference: string;
@@ -157,7 +157,9 @@ function indexUtterances(turns: TurnRecord[]): Utterance[] {
       }
     }
     const isNameAnswer = nameAsked && index === 1;
-    out.push({ index, text, compact, positions, quotable: !hasPersonalInfo(text) && !isNameAnswer });
+    // 위험 신호 발화("아빠가 때렸어" 등)는 인용·근거·공유 카드로 새지 않게 막고 safetyFlags로만 알린다
+    const quotable = !hasPersonalInfo(text) && !isNameAnswer && !isSafetyConcern(text);
+    out.push({ index, text, compact, positions, quotable });
   });
   return out;
 }
@@ -234,10 +236,11 @@ export const REPORT_SYSTEM_PROMPT = `너는 '상상 무전기'의 관찰 노트 
    - "졸려", "잘래", "그만할래" 같은 마무리 말과 이름을 묻는 질문에 대한 대답은 관찰·인용 대상이 아니다. 이야기 속 선택, 아이가 지어낸 이름·아이디어, 등장인물을 대하는 방식에 집중한다.
    - "토끼"처럼 질문에 한 단어로 답한 것 하나만으로는 추론하지 않는다. 의미 있는 선택이 하나뿐이면 observations는 1개만 쓴다.
 5. lineForParent: 내일 보호자가 아이에게 건네볼 말 1개(반말). 아이가 실제로 한 말이나 고른 것을 떠올리게 하는 호기심 어린 질문으로. 평가·칭찬·훈계·정답 유도 금지. 예: "노랑이 기다려준 거 기억나? 그때 어떤 마음이었어?"
-6. safetyFlags: 아이가 스스로를 해치겠다는 말, 누군가에게 맞거나 괴롭힘을 당한다는 말, 주소·전화번호·학교 이름 같은 개인정보를 말했을 때만 짧은 한국어 라벨(예: "주소를 말함"). 이야기 속 상상 놀이(괴물과 싸우기 등)는 해당하지 않는다. 진단은 절대 넣지 않는다. 대부분은 [].
-7. nextEpisodeTeaser: 내일 탐험할 새로운 섬을 궁금하게 만드는 1문장.
-8. 다음 낱말은 어떤 칸에도 쓰지 않는다. 이야기 속 사건을 설명할 때도 마찬가지다: ${FORBIDDEN_TERMS.join(", ")}. (예: "치료해 줬어요" 대신 "돌봐 줬어요", "문제" 대신 "일")
-9. 출력은 아래 형식의 JSON 하나만. 다른 글자 금지.
+6. 위험 신호(누가 때렸다, 다쳤다, 사라지고 싶다 등)는 summary·childQuotes·observations에 쓰지 않고 safetyFlags에만 짧게 적는다. 보호자가 따로 확인할 수 있게 하기 위함이다.
+7. safetyFlags: 아이가 스스로를 해치겠다는 말, 누군가에게 맞거나 괴롭힘을 당한다는 말, 주소·전화번호·학교 이름 같은 개인정보를 말했을 때만 짧은 한국어 라벨(예: "주소를 말함"). 이야기 속 상상 놀이(괴물과 싸우기 등)는 해당하지 않는다. 진단은 절대 넣지 않는다. 대부분은 [].
+8. nextEpisodeTeaser: 내일 탐험할 새로운 섬을 궁금하게 만드는 1문장.
+9. 다음 낱말은 어떤 칸에도 쓰지 않는다. 이야기 속 사건을 설명할 때도 마찬가지다: ${FORBIDDEN_TERMS.join(", ")}. (예: "치료해 줬어요" 대신 "돌봐 줬어요", "문제" 대신 "일")
+10. 출력은 아래 형식의 JSON 하나만. 다른 글자 금지.
 {"summary": "...", "childQuotes": ["..."], "childChoices": ["..."], "observations": [{"inference": "...", "evidence": ["..."]}], "lineForParent": "...", "safetyFlags": [], "nextEpisodeTeaser": "..."}`;
 
 const MAX_TRANSCRIPT_TURNS = 80;

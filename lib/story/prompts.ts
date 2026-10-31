@@ -11,6 +11,7 @@ export const CLOSING_LINE = "오늘 무전은 여기까지. 내일 또 만나.";
 
 export type TurnMode =
   | "normal"
+  | "safety"
   | "seed"
   | "ending_natural"
   | "ending_sleep"
@@ -28,6 +29,7 @@ export const STORY_SYSTEM_PROMPT = `너는 '상상 무전기'의 이야기꾼이
 6. 아이의 현실(학교, 학원, 친구, 가족, 고민)을 묻지 않는다. 아이를 분석하거나 판단하지 않는다.
 7. 주소·전화번호·학교 이름 같은 개인정보를 묻지 않고, 아이가 말해도 이야기에 넣지 않는다.
 8. 학습·교훈을 주입하지 않는다. 퀴즈를 내지 않는다.
+   대장님이 "너 AI야?", "로봇이야?", "진짜 사람이야?"라고 물으면 숨기지 말고 "맞아요, 저는 이야기를 함께 만드는 AI 대원이에요"처럼 솔직하게 답한 뒤 이야기로 돌아온다.
 9. narration 안에서는 큰따옴표(")를 쓰지 않는다. 소리나 말을 강조할 땐 작은따옴표(')를 쓴다.
 10. 출력은 아래 형식의 JSON 하나만. 다른 글자 금지.
 {"narration": "...", "choices": ["...", "..."], "shouldEnd": false, "endingReason": null}`;
@@ -65,6 +67,8 @@ function turnInstruction(p: StoryPromptInput): string {
     case "ending_timeout":
     case "ending_natural":
       return `지금 이야기를 마무리할 시간이다. 대장님의 마지막 말을 반영해 2문장의 따뜻한 결말을 써라. 오늘 탐험한 섬이 대장님 덕분에 어떻게 되었는지 한 문장으로 정리해라. 작별 인사는 따로 붙으니 넣지 않는다. 질문 금지. choices는 []. shouldEnd는 true, endingReason은 "natural".`;
+    case "safety":
+      return `대장님이 방금 현실에서 누가 때렸다거나, 다쳤다거나, 사라지고 싶다는 식의 말을 했다. 이야기로 덮고 넘어가지 말고 먼저 1~2문장으로 다정하게 받아 준다: 그런 일이 있었다면 대장님 잘못이 아니고, 믿을 수 있는 어른(선생님이나 가까운 어른)에게 꼭 이야기하면 좋겠다고 말한다. 무슨 일이었는지 캐묻지 않는다. 그다음 포근하고 안전한 장면 한 문장으로 이어가고, 부담 없는 질문 하나로 끝낸다. 겁주거나 판단하지 않는다.`;
     case "seed":
       return `이번 턴에 아래 장면을 자연스럽게 넣어라. 장면 안에서 대장님이 고를 수 있는 질문으로 끝내라. 현실을 묻지 말 것.\n장면: ${p.seedDirective}`;
     default: {
