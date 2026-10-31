@@ -565,7 +565,7 @@ export async function generateParentReport(input: GenerateReportInput): Promise<
       messages: buildReportMessages(normalized),
       maxTokens: 3000,
       temperature: 0.4,
-      timeoutMs: 25000,
+      timeoutMs: 35000,
     });
   } catch (err) {
     console.error("[report] LLM call failed", err);

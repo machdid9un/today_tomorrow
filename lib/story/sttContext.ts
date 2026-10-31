@@ -17,6 +17,9 @@ const HALLUCINATION_PATTERNS: RegExp[] = [
   /자막\s*(제공|by|협찬)/i,
   /다음\s*(영상|시간)에\s*(만나|뵙)/,
   /^\s*[\[(]?\s*(음악|박수|웃음|music|applause)\s*[\])]?\s*$/i,
+  // ElevenLabs Scribe가 비음성 구간에 붙이는 영어 대괄호/괄호 태그(아이 말이 아니라 오디오 이벤트
+  // 주석이다): [mumbling], (inaudible), [laughing], [background noise] 등. 태그 하나로만 된 줄 전체.
+  /^\s*[\[(]\s*[a-zA-Z][a-zA-Z\s]{1,30}[\])]\s*$/,
   /^[\s.♪~…·]*$/,
 ];
 

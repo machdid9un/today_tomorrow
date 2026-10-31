@@ -249,7 +249,20 @@ export async function chatJSON<T>(opts: ChatJSONOptions): Promise<T> {
   let model = modelCache.get(opts.model) ?? opts.model;
   const flags: CallFlags = { json: true, noThink: opts.thinking === false };
   logPrompt(model, opts.messages);
-  let res = await callHedged(opts, model, flags);
+
+  let res: Response;
+  try {
+    res = await callHedged(opts, model, flags);
+  } catch (err) {
+    // 응답이 왔지만 상태가 안 좋은 경우(429/500 등)는 아래 for 루프가 재시도하지만,
+    // fetch 자체가 실패(타임아웃 AbortError, 네트워크 오류)하면 그 루프에 진입하기도 전에
+    // 예외가 터져서 재시도가 한 번도 없이 바로 실패했다. 서버 쪽 일시 지연일 수 있으니
+    // 한 번은 더 시도한다(여기서도 실패하면 그대로 던진다).
+    const name = err instanceof Error ? err.name : "Error";
+    const message = err instanceof Error ? err.message : String(err);
+    console.warn(`[llm] 첫 요청 실패(${name}: ${message}) → 한 번 더 시도`);
+    res = await callOnce(opts, model, flags);
+  }
 
   for (let attempt = 0; attempt < 3 && !res.ok; attempt++) {
     const detail = await res.clone().text().catch(() => "");
