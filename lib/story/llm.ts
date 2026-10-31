@@ -52,6 +52,32 @@ export function hasLlmKey(): boolean {
   return Boolean(process.env.DEEPSEEK_API_KEY);
 }
 
+/**
+ * 로컬 디버그용: 매 LLM 호출의 입력 프롬프트(messages)와 출력(raw content)을 서버 터미널에 찍는다.
+ * 기본값은 개발 서버(npm run dev)에서는 켜짐, 배포본(NODE_ENV=production)에서는 꺼짐.
+ * .env.local에 STORY_PROMPT_LOG=0 / =1 로 직접 끄거나 켤 수 있다.
+ */
+function promptLogEnabled(): boolean {
+  if (process.env.STORY_PROMPT_LOG === "0") return false;
+  if (process.env.STORY_PROMPT_LOG === "1") return true;
+  return process.env.NODE_ENV === "development";
+}
+
+function logPrompt(model: string, messages: ChatMessage[]): void {
+  if (!promptLogEnabled()) return;
+  console.log(`\n┌── [llm:prompt] model=${model} ──────────────────────────`);
+  for (const m of messages) {
+    console.log(`│ [${m.role}]`);
+    for (const line of m.content.split("\n")) console.log(`│   ${line}`);
+  }
+  console.log(`└──────────────────────────────────────────────────────────`);
+}
+
+function logOutput(content: string): void {
+  if (!promptLogEnabled()) return;
+  console.log(`[llm:output] ${content}\n`);
+}
+
 function baseUrl(): string {
   return (process.env.DEEPSEEK_BASE_URL || DEFAULT_BASE_URL).replace(/\/+$/, "");
 }
@@ -222,6 +248,7 @@ export async function chatJSON<T>(opts: ChatJSONOptions): Promise<T> {
   const startedAt = Date.now();
   let model = modelCache.get(opts.model) ?? opts.model;
   const flags: CallFlags = { json: true, noThink: opts.thinking === false };
+  logPrompt(model, opts.messages);
   let res = await callHedged(opts, model, flags);
 
   for (let attempt = 0; attempt < 3 && !res.ok; attempt++) {
@@ -267,6 +294,7 @@ export async function chatJSON<T>(opts: ChatJSONOptions): Promise<T> {
     const retry = await callOnce({ ...opts, maxTokens: bigger }, model, flags);
     if (retry.ok) parsed = await readCompletion(retry);
   }
+  logOutput(parsed.content);
 
   statsLog.push({
     model,

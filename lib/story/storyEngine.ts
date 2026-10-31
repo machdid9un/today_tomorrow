@@ -214,8 +214,12 @@ export async function generateTurn(input: GenerateTurnInput): Promise<GeneratedT
           short: input.short,
           afterSeed: turnIndex === (input.short ? SHORT_SEED_TURN : SEED_TURN) + 1,
           episodeKey: ctx.episodeId,
-          // 갈림길 다음 턴부터: 오늘의 별 시즌 단계의 해결 방향 (부모 씨앗이 있어도 오늘의 목표는 풀리게)
-          plotResolve: turnIndex > (input.short ? SHORT_SEED_TURN : SEED_TURN) ? arc.resolve : undefined,
+          // 갈림길 바로 다음 턴에만: 오늘의 별 시즌 단계의 해결 방향 (부모 씨앗이 있어도 오늘의 목표는 풀리게).
+          // 주의: 턴마다 매번 같은 resolve 문구를 다시 주면, 모델이 "아직 안 풀렸다"로 오해하고
+          // 이미 끝난 장면(예: "징검돌이 놓였다")을 매 턴 또 narration으로 반복해 이야기가 헛돈다.
+          // 한 번만 주고, 그 뒤는 대화 기록 + questionPlan(afterSeed/WIND_DOWN 등)이 자연스럽게 이어가게 한다.
+          plotResolve:
+            turnIndex === (input.short ? SHORT_SEED_TURN : SEED_TURN) + 1 ? arc.resolve : undefined,
           themeId: theme.id,
           planetProgress,
           arcGoal: arc.goal,

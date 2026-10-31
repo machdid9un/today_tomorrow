@@ -4,11 +4,13 @@
 import { useState } from "react";
 import { useVoiceAdventure } from "./useVoiceAdventure";
 import ChoiceFallback from "./ChoiceFallback";
-import type { VoiceMode } from "./types";
+import type { PlanetId, VoiceMode } from "./types";
 
 export interface VoiceSessionProps {
   episodeId: string;
   mode: VoiceMode;
+  /** 로컬 테스트용: 미리 고른 오늘의 별. 안 넘기면 서버가 episodeId로 고정 선택(기존 동작). */
+  themeId?: PlanetId;
 }
 
 const PHASE_LABEL: Record<string, string> = {
@@ -41,7 +43,7 @@ function freshMockEpisodeId(): string {
  * episodeId를 key로 써서, 초기화 시 하위 트리를 완전히 새로 마운트한다.
  * (useVoiceAdventure 내부의 모든 state/ref/마이크 스트림/타이머가 깨끗하게 리셋됨)
  */
-export default function VoiceSession({ episodeId, mode }: VoiceSessionProps) {
+export default function VoiceSession({ episodeId, mode, themeId }: VoiceSessionProps) {
   const [currentEpisodeId, setCurrentEpisodeId] = useState(episodeId);
 
   const handleReset = () => {
@@ -54,6 +56,7 @@ export default function VoiceSession({ episodeId, mode }: VoiceSessionProps) {
       key={currentEpisodeId}
       episodeId={currentEpisodeId}
       mode={mode}
+      themeId={themeId}
       onReset={handleReset}
     />
   );
@@ -63,7 +66,7 @@ interface VoiceSessionInnerProps extends VoiceSessionProps {
   onReset: () => void;
 }
 
-function VoiceSessionInner({ episodeId, mode, onReset }: VoiceSessionInnerProps) {
+function VoiceSessionInner({ episodeId, mode, themeId, onReset }: VoiceSessionInnerProps) {
   const {
     phase,
     errorMessage,
@@ -74,7 +77,7 @@ function VoiceSessionInner({ episodeId, mode, onReset }: VoiceSessionInnerProps)
     stopRecording,
     submitChoice,
     endManually,
-  } = useVoiceAdventure({ episodeId, mode });
+  } = useVoiceAdventure({ episodeId, mode, themeId });
 
   const isPttRecording = phase === "recording";
   const canTalkPtt = mode === "ptt" && (phase === "listening" || phase === "recording");
@@ -108,6 +111,7 @@ function VoiceSessionInner({ episodeId, mode, onReset }: VoiceSessionInnerProps)
 
       <p className="text-[11px] text-ink/40">
         테스트용 episodeId: {episodeId}
+        {themeId ? ` · 오늘의 별: ${themeId}` : ""}
       </p>
 
       {phase === "idle" && (

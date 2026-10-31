@@ -89,8 +89,10 @@ export interface StoryPromptInput {
 function signalHint(p: StoryPromptInput): string {
   const theme = themeFor(p.episodeKey, p.themeId);
   const clue = pickFromTheme(theme.clues, p.episodeKey, 7);
-  const a = pickFromTheme(theme.characters, p.episodeKey, 17);
-  const rest = theme.characters.filter((c) => c !== a);
+  // introCharacters가 있으면 그 풀로 좁힌다(3턴 갈림길의 고정 주인공과 어긋나지 않게).
+  const pool = theme.introCharacters ?? theme.characters;
+  const a = pickFromTheme(pool, p.episodeKey, 17);
+  const rest = pool.filter((c) => c !== a);
   const b = pickFromTheme(rest, p.episodeKey, 19);
   if (p.arcHook) {
     return `오늘의 별은 '${theme.planet}'(첫 장면에서 별 이름을 한 번 말한다). 소리 단서 '${clue}'로 시작해, 단짝 친구 ${theme.host.name}의 오늘 밤 곤란을 2문장으로 또렷하게 보여 준다: ${p.arcHook} (무엇을 바라는데 무엇이 막고 있는지가 들리게. 해결 방법은 아직 말하지 않는다.)`;
