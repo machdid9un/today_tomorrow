@@ -39,6 +39,13 @@ export function withSubject(name: string | null | undefined): string {
 export function toYongStyle(text: string): string {
   const parts = text.split(/('[^']*'|"[^"]*"|“[^”]*”|‘[^’]*’)/);
   return parts
-    .map((seg, i) => (i % 2 === 1 ? seg : seg.replace(/요(?=\s*[,.!?…~]|\s*$)/g, "용")))
+    .map((seg, i) =>
+      i % 2 === 1
+        ? seg
+        : seg
+            .replace(/요(?=\s*[,.!?…~]|\s*$)/g, "용")
+            .replace(/요용/g, "용") // 모델이 '불러요용'처럼 겹쳐 쓴 경우
+            .replace(/구나용/g, "구나") // 반말 감탄 뒤 '용'은 어색해서 뺀다
+    )
     .join("");
 }
