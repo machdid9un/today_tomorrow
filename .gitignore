@@ -147,3 +147,6 @@ vite.config.ts.timestamp-*
 
 # Turbo Repo
 .turbo
+
+# Codex/Kiro가 npm run dev 중 자동 생성. 커밋되면 Codex가 README 대신 이걸 읽음.
+AGENTS.md

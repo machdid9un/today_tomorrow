@@ -54,4 +54,12 @@ create table if not exists public.waitlist (
   created_at timestamptz not null default now()
 );
 
--- TODO(역할 1): alter table ... enable row level security; + policy 정의.
+-- RLS 활성화, 정책은 없음 = anon/authenticated 완전 차단.
+-- 지금 모든 DB 접근은 서버(lib/db/supabaseServer.ts, service_role)를 통해서만 이루어지고
+-- RLS를 우회하므로 안전. 나중에 클라이언트에서 anon key로 직접 조회할 일이 생기면
+-- 그때 필요한 범위만 허용하는 정책을 추가할 것.
+alter table public.users enable row level security;
+alter table public.worlds enable row level security;
+alter table public.episodes enable row level security;
+alter table public.turns enable row level security;
+alter table public.waitlist enable row level security;
