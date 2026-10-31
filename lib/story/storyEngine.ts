@@ -284,8 +284,8 @@ export async function generateTurn(input: GenerateTurnInput): Promise<GeneratedT
               ? "이 친구 이름을 뭐라고 지어 줄까용?"
               : `${withTopic(ctx.childName)} 어떻게 하고 싶어용?`,
           // 안전 응답('어른에게 말하기')과 갈림길 장면(받아 주기 + 장면 설명 + 질문)은 잘리지 않게 5문장까지,
-          // 처음 온 별의 첫 장면(인사 + 세계관 + 역할 + 곤란 + 질문)은 6문장까지
-          introTurn || phase === "hook" ? 6 : mode === "safety" || mode === "seed" ? 5 : 4
+          // 처음 온 별의 첫 장면(인사 + 세계관 2 + 역할 + 단짝 말 2 + 질문)은 7문장까지
+          introTurn ? 7 : phase === "hook" ? 6 : mode === "safety" || mode === "seed" ? 5 : 4
         )
       : "";
   if (!narration) throw new Error("EMPTY_NARRATION");
