@@ -6,6 +6,7 @@
 // 공급자: ElevenLabs Scribe (scribe_v2). .env.local에 ELEVENLABS_API_KEY 필요.
 import { NextResponse } from "next/server";
 import { buildSttKeyterms } from "@/lib/story/sttContext";
+import { snapToChoice } from "@/lib/story/sttCorrect";
 
 export const runtime = "nodejs";
 
@@ -94,7 +95,10 @@ export async function POST(request: Request) {
   }
 
   const data = (await upstreamRes.json()) as { text?: string };
-  const text = (data.text ?? "").trim();
+  const raw = (data.text ?? "").trim();
+  // 아이 발음: 화면 보기 중 하나를 뭉개어 말한 것이면 그 보기로 붙인다 ("따자" → "빨강 사자"). 보기 밖의 말은 그대로.
+  const text = choices.length ? snapToChoice(raw, choices) : raw;
+  if (text !== raw) console.log(`[transcribe] snapped to choice: "${raw}" → "${text}"`);
 
-  return NextResponse.json({ text });
+  return NextResponse.json({ text, raw });
 }
