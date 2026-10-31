@@ -1,8 +1,12 @@
 // POST /api/tts — text → 오디오 (TTS). 소유: 역할 2.
 // 입력: JSON { text: string }
 // 출력: audio/mpeg 바이너리 스트림
-// 공급자: OpenAI TTS (tts-1, voice: nova). .env.local에 OPENAI_API_KEY 필요.
+// 공급자: OpenAI TTS (gpt-4o-mini-tts, voice: nova). .env.local에 OPENAI_API_KEY 필요.
+// gpt-4o-mini-tts는 instructions로 톤을 지정할 수 있어 tts-1보다 한국어 억양이 자연스럽다.
 import { NextResponse } from "next/server";
+
+const TTS_INSTRUCTIONS =
+  "아이에게 잠자리 동화를 읽어주듯 따뜻하고 차분하게, 조금 천천히 말해줘.";
 
 export const runtime = "nodejs";
 
@@ -50,9 +54,10 @@ export async function POST(request: Request) {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "tts-1",
+        model: "gpt-4o-mini-tts",
         voice: "nova",
         input: text,
+        instructions: TTS_INSTRUCTIONS,
         response_format: "mp3",
       }),
     });

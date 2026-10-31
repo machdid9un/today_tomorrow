@@ -36,6 +36,7 @@ export function useVoiceAdventure({ episodeId, mode }: UseVoiceAdventureOptions)
   const speechEndedAtRef = useRef<number>(0);
   const silenceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const hardTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const errorRetryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const endedRef = useRef(false);
   // /api/story/turn 계약(역할 3): turnIndex는 0부터(0=오프닝, childText=""), prevLatencyMs는
   // "바로 전 턴" 응답 지연을 다음 요청에 실어 보내 turns.latency_ms를 역순으로 채운다.
@@ -58,6 +59,7 @@ export function useVoiceAdventure({ episodeId, mode }: UseVoiceAdventureOptions)
       endedRef.current = true;
       clearSilenceTimer();
       if (hardTimeoutRef.current) clearTimeout(hardTimeoutRef.current);
+      if (errorRetryTimerRef.current) clearTimeout(errorRetryTimerRef.current);
       audioQueueRef.current?.cancel();
       vadRef.current?.stop();
       mediaRecorderRef.current?.stop();
@@ -108,6 +110,21 @@ export function useVoiceAdventure({ episodeId, mode }: UseVoiceAdventureOptions)
     // ptt 모드는 사용자가 버튼을 눌러 startRecording을 직접 트리거합니다.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mode, armSilenceTimer, clearSilenceTimer]);
+
+  /**
+   * SSE error 이벤트나 fetch 실패로 phase가 "error"가 된 뒤, 마이크가 멈춘 채로 끝나지 않도록
+   * 2초 뒤 자동으로 다시 듣기 상태로 돌아간다. 실패한 턴은 서버가 저장하지 않았으므로
+   * turnIndexRef는 여기서 건드리지 않는다(같은 turnIndex로 재시도됨).
+   */
+  const scheduleErrorRecovery = useCallback(() => {
+    if (errorRetryTimerRef.current) clearTimeout(errorRetryTimerRef.current);
+    errorRetryTimerRef.current = setTimeout(() => {
+      errorRetryTimerRef.current = null;
+      if (endedRef.current) return;
+      startListening();
+    }, 2000);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [startListening]);
 
   const startRecording = useCallback(() => {
     if (!streamRef.current || endedRef.current) return;
@@ -170,6 +187,7 @@ export function useVoiceAdventure({ episodeId, mode }: UseVoiceAdventureOptions)
       } catch {
         setErrorMessage("말을 잘 듣지 못했어요. 아래 버튼으로 골라볼까?");
         setPhase("error");
+        scheduleErrorRecovery();
         return;
       }
 
@@ -184,7 +202,7 @@ export function useVoiceAdventure({ episodeId, mode }: UseVoiceAdventureOptions)
       await runTurn(text);
       // eslint-disable-next-line react-hooks/exhaustive-deps
     },
-    [startListening]
+    [startListening, scheduleErrorRecovery]
   );
 
   const submitChoice = useCallback(
@@ -204,6 +222,8 @@ export function useVoiceAdventure({ episodeId, mode }: UseVoiceAdventureOptions)
       clearSilenceTimer();
 
       const turnIndex = turnIndexRef.current;
+      // 심사용 짧은 회차(?short=1)면 서버에 short:true를 실어 보낸다 (역할 3 storyEngine 3턴 마무리).
+      const short = new URLSearchParams(window.location.search).get("short") === "1";
 
       let res: Response;
       try {
@@ -218,17 +238,20 @@ export function useVoiceAdventure({ episodeId, mode }: UseVoiceAdventureOptions)
             childText,
             turnIndex,
             prevLatencyMs: prevLatencyMsRef.current,
+            short,
           }),
         });
       } catch {
         setErrorMessage("잠깐 쉬었다가 다시 이야기해 보자.");
         setPhase("error");
+        scheduleErrorRecovery();
         return;
       }
 
       if (!res.ok || !res.body) {
         setErrorMessage("잠깐 쉬었다가 다시 이야기해 보자.");
         setPhase("error");
+        scheduleErrorRecovery();
         return;
       }
 
@@ -274,12 +297,16 @@ export function useVoiceAdventure({ episodeId, mode }: UseVoiceAdventureOptions)
             const payload = parseJSONData<{ code: string; message: string }>(evt.data);
             setErrorMessage(payload?.message ?? "잠깐 쉬었다가 다시 이야기해 보자.");
             setPhase("error");
+            queue.cancel();
+            scheduleErrorRecovery();
             return;
           }
         }
       } catch {
         setErrorMessage("잠깐 쉬었다가 다시 이야기해 보자.");
         setPhase("error");
+        queue.cancel();
+        scheduleErrorRecovery();
         return;
       }
 
@@ -290,7 +317,7 @@ export function useVoiceAdventure({ episodeId, mode }: UseVoiceAdventureOptions)
       turnIndexRef.current = turnIndex + 1;
       // eslint-disable-next-line react-hooks/exhaustive-deps
     },
-    [episodeId, clearSilenceTimer]
+    [episodeId, clearSilenceTimer, scheduleErrorRecovery]
   );
 
   const finishTurn = useCallback(
@@ -345,6 +372,7 @@ export function useVoiceAdventure({ episodeId, mode }: UseVoiceAdventureOptions)
       streamRef.current?.getTracks().forEach((track) => track.stop());
       clearSilenceTimer();
       if (hardTimeoutRef.current) clearTimeout(hardTimeoutRef.current);
+      if (errorRetryTimerRef.current) clearTimeout(errorRetryTimerRef.current);
     };
   }, [clearSilenceTimer]);
 
