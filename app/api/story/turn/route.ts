@@ -5,6 +5,7 @@
 // 주의: POST라서 브라우저 EventSource로는 못 받음. fetch + response.body.getReader()로 읽을 것.
 import { loadEpisodeContext, saveTurn } from "@/lib/story/contextStore";
 import { generateTurn, splitSentences } from "@/lib/story/storyEngine";
+import { isLikelySttHallucination } from "@/lib/story/sttContext";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -33,7 +34,9 @@ export async function POST(request: Request) {
   if (!episodeId) {
     return Response.json({ error: "episodeId가 필요합니다." }, { status: 400 });
   }
-  const childText = typeof body?.childText === "string" ? body.childText.trim().slice(0, 500) : "";
+  const rawChildText = typeof body?.childText === "string" ? body.childText.trim().slice(0, 500) : "";
+  // STT가 소음·침묵에서 지어낸 문장("시청해 주셔서 감사합니다" 등)은 아이 말로 쓰지 않는다
+  const childText = isLikelySttHallucination(rawChildText) ? "" : rawChildText;
   const requestedTurnIndex =
     typeof body?.turnIndex === "number" && Number.isInteger(body.turnIndex) && body.turnIndex >= 0
       ? body.turnIndex

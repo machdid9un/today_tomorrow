@@ -136,7 +136,7 @@ async function runTurns(sc: EvalScenario): Promise<{ turns: EvalTurn[]; history:
           ? "name"
           : isSafetyConcern(childText)
             ? "safety"
-            : sc.seed && turnIndex === seedTurn
+            : turnIndex === seedTurn // 부모 씨앗이 없으면 고전 동화 뼈대가 갈림길 장면이 된다
               ? "seed"
               : "normal";
 

@@ -6,6 +6,7 @@ import { chatJSON, hasLlmKey, LlmJsonError, STORY_MODEL } from "./llm";
 import { detectChildName } from "./memorySummarizer";
 import { buildStoryMessages, CLOSING_LINE, OPENING_GUEST, type TurnMode } from "./prompts";
 import { isSafetyConcern } from "./safety";
+import { plotPatternFor } from "./plotPatterns";
 import { resolveSeedDirective } from "./seedPresets";
 
 export { isSafetyConcern };
@@ -161,9 +162,13 @@ export async function generateTurn(input: GenerateTurnInput): Promise<GeneratedT
     return { narration: OPENING_GUEST, choices: [], shouldEnd: false, endingReason: null, childName: null };
   }
 
-  // 2) 모드 결정 (코드가 판정)
-  let mode = decideMode(input, Boolean(ctx.seedPreset));
-  const seedDirective = mode === "seed" ? await resolveSeedDirective(ctx.seedPreset, ctx.seedText) : null;
+  // 2) 모드 결정 (코드가 판정). 갈림길 장면은 부모 씨앗이 우선이고, 없으면 회차별 고전 동화 뼈대를 쓴다.
+  let mode = decideMode(input, true);
+  const seedDirective =
+    mode === "seed"
+      ? (ctx.seedPreset ? await resolveSeedDirective(ctx.seedPreset, ctx.seedText) : null) ??
+        plotPatternFor(ctx.episodeId).directive
+      : null;
   if (mode === "seed" && !seedDirective) mode = "normal";
   const canSuggestEnd = !input.short && mode === "normal" && elapsedSeconds >= SOFT_LIMIT_SEC;
 
@@ -188,7 +193,7 @@ export async function generateTurn(input: GenerateTurnInput): Promise<GeneratedT
           seedDirective,
           askName,
           short: input.short,
-          afterSeed: Boolean(ctx.seedPreset) && turnIndex === (input.short ? SHORT_SEED_TURN : SEED_TURN) + 1,
+          afterSeed: turnIndex === (input.short ? SHORT_SEED_TURN : SEED_TURN) + 1,
           episodeKey: ctx.episodeId,
         }),
         maxTokens: 600,
