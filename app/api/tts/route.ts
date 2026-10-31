@@ -19,8 +19,13 @@ export async function POST(request: Request) {
   const apiKey = process.env.ELEVENLABS_API_KEY;
   if (!apiKey) {
     return NextResponse.json(
-      { error: { code: "CONFIG_MISSING", message: "ELEVENLABS_API_KEY가 설정되지 않았습니다." } },
-      { status: 500 }
+      {
+        error: {
+          code: "CONFIG_MISSING",
+          message: "ELEVENLABS_API_KEY가 설정되지 않았습니다.",
+        },
+      },
+      { status: 500 },
     );
   }
   const voiceId = process.env.ELEVENLABS_VOICE_ID || DEFAULT_VOICE_ID;
@@ -31,7 +36,7 @@ export async function POST(request: Request) {
   } catch {
     return NextResponse.json(
       { error: { code: "BAD_REQUEST", message: "JSON 본문이 필요합니다." } },
-      { status: 400 }
+      { status: 400 },
     );
   }
 
@@ -39,52 +44,80 @@ export async function POST(request: Request) {
   if (!text) {
     return NextResponse.json(
       { error: { code: "NO_TEXT", message: "text가 비어있습니다." } },
-      { status: 400 }
+      { status: 400 },
     );
   }
   if (text.length > MAX_TEXT_LENGTH) {
     return NextResponse.json(
       { error: { code: "TEXT_TOO_LONG", message: "문장이 너무 길어요." } },
-      { status: 400 }
+      { status: 400 },
     );
   }
 
+  const upstreamUrl = `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}?output_format=mp3_44100_128`;
+  const upstreamInit: RequestInit = {
+    method: "POST",
+    headers: {
+      "xi-api-key": apiKey,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      text: `${AUDIO_TAG} ${text}`,
+      model_id: "eleven_v3",
+      // Audio Tag가 감정의 핵심을 담당하고, 숫자값은 보조적으로 변화폭·속도만 살짝 더 준다.
+      voice_settings: {
+        stability: 0.3,
+        similarity_boost: 0.8,
+        style: 0.65,
+        speed: 1.08,
+        use_speaker_boost: true,
+      },
+    }),
+  };
   let upstreamRes: Response;
   try {
-    upstreamRes = await fetch(
-      `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}?output_format=mp3_44100_128`,
-      {
-        method: "POST",
-        headers: {
-          "xi-api-key": apiKey,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          text: `${AUDIO_TAG} ${text}`,
-          model_id: "eleven_v3",
-          // Audio Tag가 감정의 핵심을 담당하고, 숫자값은 보조적으로 변화폭·속도만 살짝 더 준다.
-          voice_settings: {
-            stability: 0.3,
-            similarity_boost: 0.8,
-            style: 0.65,
-            speed: 1.08,
-            use_speaker_boost: true,
-          },
-        }),
-      }
-    );
+    upstreamRes = await fetch(upstreamUrl, upstreamInit);
   } catch {
     return NextResponse.json(
-      { error: { code: "UPSTREAM_UNREACHABLE", message: "TTS 서버에 연결할 수 없습니다." } },
-      { status: 502 }
+      {
+        error: {
+          code: "UPSTREAM_UNREACHABLE",
+          message: "TTS 서버에 연결할 수 없습니다.",
+        },
+      },
+      { status: 502 },
     );
   }
 
   if (!upstreamRes.ok || !upstreamRes.body) {
     const detail = await upstreamRes.text().catch(() => "");
+    // 동시 요청 초과(429 concurrent_limit)는 잠깐 뒤 한 번 더 — 한 턴의 문장 여러 개가 겹칠 때 뒤쪽 문장만 소리가 빠지는 것을 막는다
+    if (upstreamRes.status === 429) {
+      await new Promise((r) => setTimeout(r, 500));
+      try {
+        const retry = await fetch(upstreamUrl, upstreamInit);
+        if (retry.ok && retry.body) {
+          return new NextResponse(retry.body, {
+            status: 200,
+            headers: {
+              "Content-Type": "audio/mpeg",
+              "Cache-Control": "no-store",
+            },
+          });
+        }
+      } catch {
+        /* 아래에서 원래 실패로 응답 */
+      }
+    }
     return NextResponse.json(
-      { error: { code: "TTS_FAILED", message: "음성을 만들지 못했어요.", detail } },
-      { status: 502 }
+      {
+        error: {
+          code: "TTS_FAILED",
+          message: "음성을 만들지 못했어요.",
+          detail,
+        },
+      },
+      { status: 502 },
     );
   }
 
