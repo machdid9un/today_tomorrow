@@ -28,6 +28,10 @@ export function useVoiceAdventure({ episodeId, mode, themeId }: UseVoiceAdventur
   // 마이크를 못 쓰는 환경(권한 거부·데스크톱·심사용 노트북): 버튼·글 입력으로 같은 이야기를 진행한다
   const [micAvailable, setMicAvailable] = useState(true);
   const micRef = useRef(true);
+  // 시끄러운 방: 빈 전사·전사 실패가 연달아 나면 자동 듣기(VAD)를 멈추고 '꾹 누르고 말하기' + 버튼으로 바꾼다
+  const [pttFallback, setPttFallback] = useState(false);
+  const pttFallbackRef = useRef(false);
+  const sttMissRef = useRef(0);
   const [choices, setChoices] = useState<string[]>([]);
   const [lastChildText, setLastChildText] = useState<string>("");
   const [narrationLog, setNarrationLog] = useState<string[]>([]);
@@ -118,7 +122,7 @@ export function useVoiceAdventure({ episodeId, mode, themeId }: UseVoiceAdventur
     setPhase("listening");
     armSilenceTimer();
 
-    if (mode === "handsfree" && streamRef.current) {
+    if (mode === "handsfree" && streamRef.current && !pttFallbackRef.current) {
       vadRef.current?.stop();
       vadRef.current = startEnergyVAD(streamRef.current, {
         onCalibrated: (effectiveThreshold, noiseFloor) => {
@@ -235,6 +239,23 @@ export function useVoiceAdventure({ episodeId, mode, themeId }: UseVoiceAdventur
     }
   }, []);
 
+  /** 빈 전사·실패를 센다. 2번 연속이면 자동 듣기를 멈추고 꾹 누르기·버튼 모드로 바꾸고 true를 돌려준다 */
+  const registerMiss = useCallback((): boolean => {
+    sttMissRef.current += 1;
+    if (sttMissRef.current < 2 || pttFallbackRef.current) return false;
+    pttFallbackRef.current = true;
+    setPttFallback(true);
+    vadRef.current?.stop();
+    vadRef.current = null;
+    speakErrorAndRecover(
+      choicesRef.current.length
+        ? "주변이 시끄러운가 봐용. 아래 버튼을 누르거나, 꾹 누르고 말해 줄래용?"
+        : "주변이 시끄러운가 봐용. 꾹 누르고 말해 줄래용?"
+    );
+    return true;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [speakErrorAndRecover]);
+
   const processUtterance = useCallback(
     async (blob: Blob) => {
       setPhase("transcribing");
@@ -257,16 +278,19 @@ export function useVoiceAdventure({ episodeId, mode, themeId }: UseVoiceAdventur
         const data = (await res.json()) as { text?: string };
         text = (data.text ?? "").trim();
       } catch {
-        speakErrorAndRecover("말을 잘 듣지 못했어요. 아래 버튼으로 골라볼까?");
+        if (registerMiss()) return;
+        speakErrorAndRecover(choicesRef.current.length ? "앗, 잘 못 들었어용. 한 번 더 말하거나 버튼을 눌러 줄래용?" : "앗, 잘 못 들었어용. 한 번 더 말해 줄래용?");
         return;
       }
 
       if (!text) {
-        // 빈 발화(무음 녹음 등) → 다시 듣기 상태로.
+        // 빈 발화(무음·소음만 녹음) → 다시 듣기. 연달아 비면 시끄러운 방으로 보고 버튼 모드로.
+        if (registerMiss()) return;
         startListening();
         return;
       }
 
+      sttMissRef.current = 0;
       setLastChildText(text);
       // "잘래/졸려" 등 취침 발화 감지는 서버(역할 3 storyEngine.isSleepRequest)가 담당합니다.
       await runTurn(text);
@@ -416,7 +440,7 @@ export function useVoiceAdventure({ episodeId, mode, themeId }: UseVoiceAdventur
     setErrorMessage(null);
     setPhase("requesting-permission");
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
       streamRef.current = stream;
     } catch {
       // 마이크가 없어도 이야기는 시작한다: 용의 말은 TTS로 나오고, 아이는 버튼이나 글로 대답한다.
@@ -462,6 +486,7 @@ export function useVoiceAdventure({ episodeId, mode, themeId }: UseVoiceAdventur
     submitChoice, // 선택지 버튼 폴백
     submitText: submitChoice, // 글 입력 폴백 (마이크 없는 환경)
     micAvailable,
+    pttFallback, // 시끄러운 방: 자동 듣기 대신 꾹 누르고 말하기
     endManually,
   };
 }

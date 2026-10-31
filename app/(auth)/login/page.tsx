@@ -1,6 +1,6 @@
-// 로그인 (매직링크 요청). 소유: 역할 1 (화면은 역할 4의 LoginScreen).
-// 매직링크 전송은 LoginScreen이 lib/db/supabaseClient로 요청하고, 링크는 /callback?next=… 로 돌아온다.
-// TODO(역할 1): /callback 에서 코드 교환 → 세션 쿠키 → 게스트 세계관 귀속(claim) → next로 리다이렉트.
+// 회원가입/로그인 (이메일+비밀번호). 소유: 역할 1 (화면은 역할 4의 LoginScreen).
+// LoginScreen이 POST /api/auth/signup | /api/auth/login을 호출하고, 성공하면 받은 worldId를
+// localStorage에 저장한 뒤 next로 이동한다(§9-계정, app/api/auth/signup/route.ts 상단 메모 참고).
 import type { Metadata } from "next";
 import { Suspense } from "react";
 import LoginScreen from "@/components/parent/LoginScreen";

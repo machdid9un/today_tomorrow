@@ -28,10 +28,10 @@ export default function AdventureStage(props: AdventureStageProps) {
 }
 
 function Stage({ episodeId, mode, themeId, onReset }: AdventureStageProps & { onReset: () => void }) {
-  const { phase, errorMessage, choices, narrationLog, start, startRecording, stopRecording, submitChoice, submitText, micAvailable, endManually } = useVoiceAdventure({ episodeId, mode, themeId: themeId ?? undefined });
+  const { phase, errorMessage, choices, narrationLog, start, startRecording, stopRecording, submitChoice, submitText, micAvailable, pttFallback, endManually } = useVoiceAdventure({ episodeId, mode, themeId: themeId ?? undefined });
   const [typed, setTyped] = useState("");
   // 마이크가 없거나, (마이크가 있어도) 못 알아들었는데 고를 버튼이 없을 때 글로 대답할 수 있게
-  const canType = (!micAvailable && (phase === "listening" || phase === "error")) || (phase === "error" && choices.length === 0);
+  const canType = (!micAvailable && (phase === "listening" || phase === "error")) || (phase === "error" && choices.length === 0) || (pttFallback && phase === "listening" && choices.length === 0);
   const [stopArmed, setStopArmed] = useState(false);
   const onStopClick = () => {
     if (stopArmed) {
@@ -64,7 +64,7 @@ function Stage({ episodeId, mode, themeId, onReset }: AdventureStageProps & { on
   if (phase === "ended") return <HandoffScreen episodeId={episodeId} />;
 
   const lastLine = narrationLog[narrationLog.length - 1] ?? "";
-  const pttActive = mode === "ptt" && (phase === "listening" || phase === "recording");
+  const pttActive = (mode === "ptt" || pttFallback) && (phase === "listening" || phase === "recording" || (pttFallback && phase === "error"));
 
   return (
     <KidShell>
@@ -140,7 +140,7 @@ function Stage({ episodeId, mode, themeId, onReset }: AdventureStageProps & { on
               className={styles.dialogInput}
               value={typed}
               onChange={(e) => setTyped(e.target.value)}
-              placeholder={choices.length ? "다른 대답을 적어도 돼요" : "여기에 대답을 적어 줘요 (예: 지우)"}
+              placeholder={choices.length ? "다른 대답 적기" : "대답을 적어 줘요"}
               aria-label="글로 대답하기"
               autoFocus
             />

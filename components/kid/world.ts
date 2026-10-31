@@ -14,6 +14,9 @@ export type WorldState =
   | { status: "full"; islands: Island[]; sample: boolean };
 
 export const WORLD_ID_KEY = "sangsang.worldId";
+/** 로그인/회원가입으로 얻은 worldId인지 표시(§9-계정). 게스트 worldId와 달리 쿠키 TTL 로직을
+ * 안 타고 그대로 이어가야 해서, startAdventure가 둘을 구분하는 데 쓴다. */
+const LOGGED_IN_KEY = "sangsang.loggedIn";
 
 // 피칭 백업용 샘플 세계 (README §9: 화면에 "샘플" 표시)
 export const SAMPLE_ISLANDS: Island[] = [
@@ -36,6 +39,23 @@ export function saveWorldId(worldId: string) {
     window.localStorage.setItem(WORLD_ID_KEY, worldId);
   } catch {
     // 저장이 막혀도 쿠키로 서버가 이어감
+  }
+}
+
+/** 로그인/회원가입 성공 직후에 한 번 불러 둔다(components/parent/LoginScreen.tsx). */
+export function markLoggedIn() {
+  try {
+    window.localStorage.setItem(LOGGED_IN_KEY, "1");
+  } catch {
+    // 저장이 막혀도 게스트처럼 동작할 뿐, 치명적이지 않음
+  }
+}
+
+export function isLoggedIn(): boolean {
+  try {
+    return window.localStorage.getItem(LOGGED_IN_KEY) === "1";
+  } catch {
+    return false;
   }
 }
 

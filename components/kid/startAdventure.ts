@@ -1,14 +1,14 @@
 // 오늘의 별을 고른 뒤 모험 시작: 마이크 권한 → 게스트 세션 → /kid/adventure. 소유: 역할 4.
 // 모험 화면(역할 2)은 episodeId를 쿼리로 받는다. themeId도 같이 실어 두면 첫 /api/story/turn에 넘길 수 있다.
 import type { PlanetId } from "@/lib/story/themes";
-import { saveWorldId } from "./world";
+import { isLoggedIn, readWorldId, saveWorldId } from "./world";
 
 async function warmUpMic() {
   // 부모가 보는 이 화면에서 마이크 권한을 먼저 받아 둔다. 거부돼도 모험 화면의 버튼 폴백으로 진행.
   try {
     // 권한 창이 안 닫히거나 응답이 없으면 8초 뒤 그냥 진행한다(버튼이 멈춘 것처럼 보이지 않게)
     const stream = await Promise.race([
-      navigator.mediaDevices.getUserMedia({ audio: true }),
+      navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } }),
       new Promise<null>((resolve) => setTimeout(() => resolve(null), 8000)),
     ]);
     stream?.getTracks().forEach((t) => t.stop());
@@ -35,7 +35,14 @@ export async function startAdventure({ themeId, short, demo }: StartOptions): Pr
   let episodeId: string | null = null;
   if (!demo) {
     try {
-      const res = await fetch("/api/sessions", { method: "POST" });
+      // 로그인/회원가입으로 얻은 worldId만 명시적으로 보낸다(게스트는 그대로 쿠키로 이어감 —
+      // 안 그러면 게스트의 48시간 만료 갱신 로직을 건너뛰게 된다).
+      const knownWorldId = isLoggedIn() ? readWorldId() : null;
+      const res = await fetch("/api/sessions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(knownWorldId ? { worldId: knownWorldId } : {}),
+      });
       if (res.ok) {
         const body = (await res.json()) as { worldId?: string; episodeId?: string };
         if (body.worldId) saveWorldId(body.worldId);
