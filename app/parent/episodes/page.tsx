@@ -1,9 +1,10 @@
-// 부모 모드: 이야기 기록 (완성된 회차 목록 → 동화책). 소유: 역할 4.
+// 부모 모드: 이야기 기록 (별마다 책 한 권 → 목차 → 동화책). 소유: 역할 4.
 import type { Metadata } from "next";
-import EpisodeList from "@/components/parent/EpisodeList";
+import StoryParentApp from "@/components/parent/StoryParentApp";
+import { getSeedCopy } from "@/components/parent/seedCopy";
 
 export const metadata: Metadata = { title: "이야기 기록 · 상상 무전기" };
 
 export default function ParentEpisodesPage() {
-  return <EpisodeList />;
+  return <StoryParentApp seedCopy={getSeedCopy()} initialTab="library" />;
 }

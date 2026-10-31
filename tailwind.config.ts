@@ -12,10 +12,16 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
-        night: "#171C3A",
-        paper: "#FFFFFF",
-        ink: "#1B1F2E",
-        signal: "#FF7A1A",
+        // story-planets 시안 토큰 (README §6 역할 4). app/globals.css의 CSS 변수와 같은 값
+        night: "#20213D",
+        paper: "#FFFAF2",
+        ink: "#20213D",
+        cream: "#FFF4DF",
+        muted: "#565073",
+        coral: "#FF876E", // CTA. 대비를 위해 CTA 글자는 night(남색)
+        lavender: "#B6ABD9",
+        star: "#FFE2A2",
+        signal: "#FF876E", // 옛 이름 호환 (= coral)
         sky: "#7AD7FF",
       },
       fontFamily: {

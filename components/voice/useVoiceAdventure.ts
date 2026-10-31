@@ -137,19 +137,50 @@ export function useVoiceAdventure({ episodeId, mode, themeId }: UseVoiceAdventur
   }, [mode, armSilenceTimer, clearSilenceTimer]);
 
   /**
-   * SSE error 이벤트나 fetch 실패로 phase가 "error"가 된 뒤, 마이크가 멈춘 채로 끝나지 않도록
-   * 2초 뒤 자동으로 다시 듣기 상태로 돌아간다. 실패한 턴은 서버가 저장하지 않았으므로
-   * turnIndexRef는 여기서 건드리지 않는다(같은 turnIndex로 재시도됨).
+   * 에러 메시지를 화면 텍스트로만 보여주지 않고 TTS로도 들려준다. 아이는 화면을 안 보는
+   * 핸즈프리 설계라(README §4), "잘 못 들었어용" 같은 안내가 소리로 안 나가면 그냥 멈춘 것처럼
+   * 느껴진다. 재생이 끝난 뒤에 다시 듣기 상태로 돌아간다 — 재생 중에 마이크를 열면 스피커
+   * 소리가 다시 입력으로 들어와 에코로 오인식되는 문제가 있다(README §4 운영 규칙, 정상 턴과 동일).
+   * 실패한 턴은 서버가 저장하지 않았으므로 turnIndexRef는 여기서 건드리지 않는다(같은 turnIndex로 재시도됨).
+   * TTS 자체가 끝없이 응답이 없는 경우(네트워크 행)에도 마이크가 멈춘 채 끝나지 않도록 안전장치를 둔다.
    */
-  const scheduleErrorRecovery = useCallback(() => {
-    if (errorRetryTimerRef.current) clearTimeout(errorRetryTimerRef.current);
-    errorRetryTimerRef.current = setTimeout(() => {
-      errorRetryTimerRef.current = null;
-      if (endedRef.current) return;
-      startListening();
-    }, 2000);
+  const speakErrorAndRecover = useCallback(
+    (message: string) => {
+      setErrorMessage(message);
+      setPhase("error");
+      turnInFlightRef.current = false;
+      audioQueueRef.current?.cancel();
+
+      let recovered = false;
+      const recover = () => {
+        if (recovered || endedRef.current) return;
+        recovered = true;
+        if (errorRetryTimerRef.current) {
+          clearTimeout(errorRetryTimerRef.current);
+          errorRetryTimerRef.current = null;
+        }
+        startListening();
+      };
+
+      const queue = new OrderedAudioQueue(recover);
+      audioQueueRef.current = queue;
+      queue.enqueue(0, message);
+      queue.setExpectedCount(1);
+
+      if (errorRetryTimerRef.current) clearTimeout(errorRetryTimerRef.current);
+      errorRetryTimerRef.current = setTimeout(recover, 8000);
+    },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [startListening]);
+    [startListening]
+  );
+
+  /** 마이크가 없어 다시 들을 수 없는 상황(권한 거부 등)에 안내만 음성으로 들려준다(복구 없음). */
+  const speakOnce = useCallback((message: string) => {
+    const queue = new OrderedAudioQueue(() => {});
+    audioQueueRef.current = queue;
+    queue.enqueue(0, message);
+    queue.setExpectedCount(1);
+  }, []);
 
   const startRecording = useCallback(() => {
     if (!streamRef.current || endedRef.current) return;
@@ -210,9 +241,7 @@ export function useVoiceAdventure({ episodeId, mode, themeId }: UseVoiceAdventur
         const data = (await res.json()) as { text?: string };
         text = (data.text ?? "").trim();
       } catch {
-        setErrorMessage("말을 잘 듣지 못했어요. 아래 버튼으로 골라볼까?");
-        setPhase("error");
-        scheduleErrorRecovery();
+        speakErrorAndRecover("말을 잘 듣지 못했어요. 아래 버튼으로 골라볼까?");
         return;
       }
 
@@ -227,7 +256,7 @@ export function useVoiceAdventure({ episodeId, mode, themeId }: UseVoiceAdventur
       await runTurn(text);
       // eslint-disable-next-line react-hooks/exhaustive-deps
     },
-    [startListening, scheduleErrorRecovery]
+    [startListening, speakErrorAndRecover]
   );
 
   const submitChoice = useCallback(
@@ -277,18 +306,12 @@ export function useVoiceAdventure({ episodeId, mode, themeId }: UseVoiceAdventur
           }),
         });
       } catch {
-        setErrorMessage("잠깐 쉬었다가 다시 이야기해 보자.");
-        setPhase("error");
-        turnInFlightRef.current = false;
-        scheduleErrorRecovery();
+        speakErrorAndRecover("잠깐 쉬었다가 다시 이야기해 보자.");
         return;
       }
 
       if (!res.ok || !res.body) {
-        setErrorMessage("잠깐 쉬었다가 다시 이야기해 보자.");
-        setPhase("error");
-        turnInFlightRef.current = false;
-        scheduleErrorRecovery();
+        speakErrorAndRecover("잠깐 쉬었다가 다시 이야기해 보자.");
         return;
       }
 
@@ -332,20 +355,14 @@ export function useVoiceAdventure({ episodeId, mode, themeId }: UseVoiceAdventur
             queue.setExpectedCount(sentences.length);
           } else if (evt.event === "error") {
             const payload = parseJSONData<{ code: string; message: string }>(evt.data);
-            setErrorMessage(payload?.message ?? "잠깐 쉬었다가 다시 이야기해 보자.");
-            setPhase("error");
             queue.cancel();
-            turnInFlightRef.current = false;
-            scheduleErrorRecovery();
+            speakErrorAndRecover(payload?.message ?? "잠깐 쉬었다가 다시 이야기해 보자.");
             return;
           }
         }
       } catch {
-        setErrorMessage("잠깐 쉬었다가 다시 이야기해 보자.");
-        setPhase("error");
         queue.cancel();
-        turnInFlightRef.current = false;
-        scheduleErrorRecovery();
+        speakErrorAndRecover("잠깐 쉬었다가 다시 이야기해 보자.");
         return;
       }
 
@@ -356,7 +373,7 @@ export function useVoiceAdventure({ episodeId, mode, themeId }: UseVoiceAdventur
       turnIndexRef.current = turnIndex + 1;
       // eslint-disable-next-line react-hooks/exhaustive-deps
     },
-    [episodeId, themeId, clearSilenceTimer, scheduleErrorRecovery]
+    [episodeId, themeId, clearSilenceTimer, speakErrorAndRecover]
   );
 
   const finishTurn = useCallback(
@@ -386,8 +403,10 @@ export function useVoiceAdventure({ episodeId, mode, themeId }: UseVoiceAdventur
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       streamRef.current = stream;
     } catch {
-      setErrorMessage("마이크 권한이 없어요. 아래 버튼으로 이야기를 골라볼까?");
+      const message = "마이크 권한이 없어요. 아래 버튼으로 이야기를 골라볼까?";
+      setErrorMessage(message);
       setPhase("error");
+      speakOnce(message); // 마이크가 없어 다시 들을 수 없으니 복구 없이 안내만 들려준다.
       return;
     }
 
@@ -399,7 +418,7 @@ export function useVoiceAdventure({ episodeId, mode, themeId }: UseVoiceAdventur
     // turnIndex 0: 아이 발화 없이 오프닝 멘트를 받아옵니다 (README §3-A "이름이 뭐야?" 등).
     await runTurn("");
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [config.hardTimeoutMs, endEpisode, runTurn]);
+  }, [config.hardTimeoutMs, endEpisode, runTurn, speakOnce]);
 
   const endManually = useCallback(() => {
     void endEpisode("manual");
