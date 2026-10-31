@@ -1,0 +1,22 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* 디자인 토큰 (역할 4 소유, README §6 참고) */
+:root {
+  --color-night: #171c3a; /* 밤 */
+  --color-paper: #ffffff; /* 종이 */
+  --color-ink: #1b1f2e; /* 잉크 */
+  --color-signal: #ff7a1a; /* 주황 - 말하기·한마디 CTA 전용 */
+  --color-sky: #7ad7ff; /* 하늘 - 신호 표시 전용 */
+
+  --font-display: "Jua", sans-serif;
+  --font-sans: "Noto Sans KR", sans-serif;
+  --font-mono: "IBM Plex Mono", monospace;
+}
+
+body {
+  background-color: var(--color-paper);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+}
