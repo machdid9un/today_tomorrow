@@ -195,6 +195,10 @@ export async function generateTurn(input: GenerateTurnInput): Promise<GeneratedT
           short: input.short,
           afterSeed: turnIndex === (input.short ? SHORT_SEED_TURN : SEED_TURN) + 1,
           episodeKey: ctx.episodeId,
+          plotResolve:
+            !ctx.seedPreset && turnIndex > (input.short ? SHORT_SEED_TURN : SEED_TURN)
+              ? plotPatternFor(ctx.episodeId).resolve
+              : undefined,
         }),
         maxTokens: 600,
         temperature: 0.8,

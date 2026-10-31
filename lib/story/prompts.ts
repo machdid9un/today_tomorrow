@@ -59,6 +59,8 @@ export interface StoryPromptInput {
   afterSeed?: boolean;
   /** 회차마다 신호 단서·섬을 다르게 고르기 위한 키 (episodeId) */
   episodeKey?: string;
+  /** 부모 씨앗이 없는 회차: 갈림길 이후 고전 동화 뼈대의 해결 방향 */
+  plotResolve?: string;
 }
 
 /** 첫 신호의 단서와 섬. 매번 같은 오프닝("깜빡깜빡 불빛")이 되지 않게 회차마다 다르게 고른다. */
@@ -137,13 +139,13 @@ export function questionPlan(p: StoryPromptInput): string {
 
   if (p.askName) {
     parts.push(
-      `${signalHint(p)} 누군가 그 단서로 도움을 청하는 신호를 보낸다고 한 문장으로 들려준 뒤, 누가 보냈을지 한 문장으로 묻는다: '○○일까요, △△일까요, 아니면 다른 친구일까요?' (○○·△△는 단서에 어울리는 귀여운 후보, 각각 2~3단어). choices도 그 두 후보로 한다.`
+      `${signalHint(p)} 누군가 그 단서로 도움을 청하는 신호를 보낸다고 한 문장으로 들려준 뒤, 누가 보냈을지 짧은 한 문장으로 묻는다: '○○일까요, 아니면 △△일까요?' (○○·△△는 단서에 어울리는 귀여운 후보, 각각 2~3단어. 다른 대답도 반긴다). choices도 그 두 후보로 한다.`
     );
   } else if (p.turnIndex === 0) {
     parts.push(
       p.memory
         ? "지난 모험의 친구와 오늘 밤 무엇을 할지, 두 가지 보기로 묻는다('A할까요, 아니면 B할까요?')."
-        : `${signalHint(p)} 누군가 그 단서로 신호를 보낸다고 들려준 뒤, 누가 보냈을지 한 문장으로 묻는다: '○○일까요, △△일까요, 아니면 다른 친구일까요?'`
+        : `${signalHint(p)} 누군가 그 단서로 신호를 보낸다고 들려준 뒤, 누가 보냈을지 짧은 한 문장으로 묻는다: '○○일까요, 아니면 △△일까요?'`
     );
   } else if (p.turnIndex > 0 && (!text || MINIMAL.test(compact(text)) || DONT_KNOW.test(text))) {
     // '몰라' 사다리: ① 쉬운 힌트로 다시 → ② 두 가지 보기 → ③ 무전기가 먼저 상상을 말해 주고 진행
@@ -163,7 +165,7 @@ export function questionPlan(p: StoryPromptInput): string {
     parts.push(`대장님의 선택을 이야기로 이어 주고, 그 선택을 '어떻게' 해 볼지 묻는다(예: '어떻게 도와줄까요?').${withExamples}`);
   } else if (p.turnIndex >= WIND_DOWN_TURN) {
     parts.push(
-      `이제 잠잘 시간 쪽으로 이야기를 천천히 가라앉힌다. 처음에 도움을 청한 문제가 아직 안 풀렸으면 이번에 대장님 덕분에 풀리게 한다. 새 위험이나 큰 사건은 만들지 않는다. 별빛·바람 소리 같은 조용한 장면 뒤에, 친구에게 해 줄 말이나 함께 보고 싶은 것처럼 포근한 질문 하나를 한다.${withExamples}`
+      "이제 잠잘 시간 쪽으로 이야기를 천천히 가라앉힌다. 처음에 도움을 청한 문제가 아직 안 풀렸으면 이번에 대장님 덕분에 풀리게 한다. 새 위험이나 큰 사건은 만들지 않는다. 별빛·바람 소리 같은 조용한 장면 뒤에, 친구에게 해 줄 말이나 함께 보고 싶은 것처럼 포근하고 짧은 질문 하나를 한다(보기를 말로 늘어놓지 않는다)."
     );
   } else if (p.turnIndex === 2) {
     parts.push(
@@ -199,11 +201,11 @@ function turnInstruction(p: StoryPromptInput): string {
       return `대장님이 졸리다고 했다. 새 사건 없이 1~2문장으로 아주 조용하고 포근하게 마무리해라. 작별 인사는 따로 붙으니 "잘 자요" 같은 인사는 넣지 않는다. 질문 금지. choices는 []. shouldEnd는 true, endingReason은 "sleep_request".`;
     case "ending_timeout":
     case "ending_natural":
-      return `지금 이야기를 마무리할 시간이다. 대장님의 마지막 말을 반영해 2문장의 따뜻한 결말을 써라. 오늘 탐험한 섬이 대장님 덕분에 어떻게 되었는지 한 문장으로 정리해라. 작별 인사는 따로 붙으니 넣지 않는다. 질문 금지. choices는 []. shouldEnd는 true, endingReason은 "natural".`;
+      return `${p.plotResolve ? `오늘 이야기의 해결 방향: ${p.plotResolve} ` : ""}지금 이야기를 마무리할 시간이다. 대장님의 마지막 말을 반영해 2문장의 따뜻한 결말을 써라. 오늘 탐험한 섬이 대장님 덕분에 어떻게 되었는지 한 문장으로 정리해라. 작별 인사는 따로 붙으니 넣지 않는다. 질문 금지. choices는 []. shouldEnd는 true, endingReason은 "natural".`;
     case "safety":
       return `대장님이 방금 현실에서 누가 때렸다거나, 다쳤다거나, 사라지고 싶다는 식의 말을 했다. 이야기로 덮고 넘어가지 말고 먼저 1~2문장으로 다정하게 받아 준다: 그런 일이 있었다면 대장님 잘못이 아니고, 믿을 수 있는 어른(선생님이나 가까운 어른)에게 꼭 이야기하면 좋겠다고 말한다. 무슨 일이었는지 캐묻지 않는다. 그다음 포근하고 안전한 장면 한 문장으로 이어가고, 쉬운 보기 두 개로 묻는 부담 없는 질문 하나로 끝낸다. 겁주거나 판단하지 않는다.`;
     case "seed":
-      return `이번 턴에 아래 장면을 자연스럽게 넣어라. 대장님의 방금 말을 먼저 짧게 받아 준 뒤 장면으로 들어간다. 지금까지 나온 인물·장소를 그대로 쓰고, 갑자기 다른 곳으로 장면을 바꾸지 않는다. 장면 속 두 갈래를 "A할까요, 아니면 B할까요?" 한 문장으로 묻고 끝낸다(그 앞에 '무엇을 할까요?' 같은 질문을 따로 붙이지 않는다). choices도 그 두 갈래로 한다. 현실을 묻지 말 것.\n장면: ${p.seedDirective}`;
+      return `이번 턴에 아래 장면을 자연스럽게 넣어라. 대장님의 방금 말을 먼저 짧게 받아 준 뒤 장면으로 들어간다. 지금까지 나온 인물·장소를 그대로 쓰고, 갑자기 다른 곳으로 장면을 바꾸지 않는다. 이 장면이 처음에 도와 달라는 신호를 보낸 이유가 되게 잇는다(예: '그래서 신호를 보냈던 거예요.'). 장면 속 두 갈래를 "A할까요, 아니면 B할까요?" 한 문장으로 묻고 끝낸다(그 앞에 '무엇을 할까요?' 같은 질문을 따로 붙이지 않는다). choices도 그 두 갈래로 한다. 현실을 묻지 말 것.\n장면: ${p.seedDirective}`;
     default: {
       const parts: string[] = [];
       if (p.turnIndex === 0) {
@@ -219,6 +221,7 @@ function turnInstruction(p: StoryPromptInput): string {
       } else {
         parts.push("대장님의 말을 반영해 이야기를 이어가라.");
       }
+      if (p.plotResolve) parts.push(`오늘 이야기의 해결 방향(대장님의 선택을 따르며 자연스럽게): ${p.plotResolve}`);
       parts.push(questionPlan(p));
       if (p.canSuggestEnd) {
         parts.push(
