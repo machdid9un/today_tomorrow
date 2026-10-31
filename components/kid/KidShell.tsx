@@ -2,10 +2,12 @@
 // 아이 화면 공통 틀: 밤하늘 + 별 + 머리(로고 · 로그인 · 부모님 버튼). 소유: 역할 4.
 // 첫 화면, 동화책, 건네주기 화면이 같이 쓴다. 역할 2의 모험 화면도 감싸서 쓸 수 있다.
 import Link from "next/link";
-import { createContext, useCallback, useContext, useRef, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
+import { stopAllAudio } from "@/components/voice/audioQueue";
 import ParentGate from "./ParentGate";
 import Wordmark from "./Wordmark";
 import styles from "./kid.module.css";
+import { isLoggedIn } from "./world";
 
 // 별 자리는 고정 공식으로 만들어서 서버·브라우저 그림이 같다
 const STARS = Array.from({ length: 56 }, (_, i) => {
@@ -41,6 +43,9 @@ export default function KidShell({ children, showLogin = false, showParent = tru
     if (timer.current) clearTimeout(timer.current);
     timer.current = setTimeout(() => setToast(null), 3000);
   }, []);
+  // 로그인한 기기면 "로그인" 링크를 다시 보여 주지 않는다(로그아웃 기능이 없어서 보여 줘도 할 게 없음).
+  const [loggedIn, setLoggedIn] = useState(false);
+  useEffect(() => setLoggedIn(isLoggedIn()), []);
 
   return (
     <ToastContext.Provider value={showToast}>
@@ -58,11 +63,11 @@ export default function KidShell({ children, showLogin = false, showParent = tru
         </div>
         <div className={styles.app}>
           <header className={styles.bar}>
-            <Link href="/kid" className={styles.brand} aria-label="쫑긋 처음으로">
+            <Link href="/kid" className={styles.brand} aria-label="쫑긋 처음으로" onClick={stopAllAudio}>
               <Wordmark /><sup aria-hidden="true">✦</sup>
             </Link>
             <div className={styles.barRight}>
-              {showLogin && (
+              {showLogin && !loggedIn && (
                 <Link href="/login" className={styles.login}>
                   로그인
                 </Link>
