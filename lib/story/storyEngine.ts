@@ -185,6 +185,7 @@ export async function generateTurn(input: GenerateTurnInput): Promise<GeneratedT
   const plan = planNight(theme, planetProgress, ctx.episodeId, answer);
   const needsChoice = plan.needsChoice && !input.short;
   const brief = nightBrief(theme, planetProgress, plan.night, plotPatternFor(ctx.episodeId));
+  if (input.short) brief.villain.due = false; // 심사용 3턴 회차에는 방해꾼을 넣지 않는다
   const phase = phaseFor({ turnIndex, choiceTurn, needsChoice, villainDue: brief.villain.due, restMode: ctx.seedPreset === "rest", short: input.short });
   const night: NightCard = {
     label: plan.night?.label ?? "자유 모험",

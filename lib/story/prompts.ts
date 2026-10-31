@@ -131,7 +131,7 @@ function worldIntro(p: StoryPromptInput): string {
     return "이 별에 다시 왔다. 지난번 이 별에서 아이가 한 일(시즌 줄거리의 '끝낸 밤'·'만든 것' 참고)을 한 문장으로 반갑게 떠올린다. ";
   }
   const name = p.childName ? withTopic(p.childName) : p.askName ? "(방금 말한 아이 이름)은/는" : "친구는";
-  return `[세계관 소개 — 이 별에 처음 왔으니 꼭] 별 이름과 이 별이 어떤 곳인지를 아이가 바로 그릴 수 있게 1~2문장으로 들려준다: "${theme.world.intro}" (뜻은 그대로, 말은 자연스럽게 다듬어도 된다). 이어서 아이에게 역할을 한 문장으로 준다: "오늘부터 ${name} ${theme.world.role}${hasBatchim(theme.world.role) ? "이에용" : "예용"}!"처럼. `;
+  return `[세계관 소개 — 이 별에 처음 왔으니 꼭] 별 이름('${theme.planet}')을 꼭 말하고, 이 별이 어떤 곳인지를 아이가 바로 그릴 수 있게 1~2문장으로 들려준다: "${theme.world.intro}" (뜻은 그대로, 말은 자연스럽게 다듬어도 된다). 이어서 아이에게 역할을 한 문장으로 준다: "오늘부터 ${name} ${theme.world.role}${hasBatchim(theme.world.role) ? "이에용" : "예용"}!"처럼. `;
 }
 
 const DONT_KNOW = /(몰라|모르겠|모르겟|글쎄|몰루|모름)/;
@@ -173,9 +173,9 @@ const CHILD_ASKED = /(\?|뭐야|몇\s*살|어디야|누구야|왜\s|왜$|뭐\s*�
 // 아이가 자기 마음을 말한 경우 (인물 묘사 '무서운 괴물'은 제외: 아이 자신이 주어인 짧은 말만)
 const FEELING = /^(나\s*)?(무서워|무섭다|슬퍼|슬프다|외로워|울고\s*싶어|엄마\s*보고\s*싶어|보고\s*싶어)[.!~]*$/;
 // 회차 길이(리드 확정: 최소 7턴, 최대 15턴)에 맞춘 뼈대:
-// (0/1 고르기) → 곤란 → 첫 생각 → 3 첫 시도의 뜻밖의 결과 → 4 어떻게 → 5 방해꾼/두 번째 → 6 진짜 이유 → 7 마지막 조각 → 8 해결 → 9 잠 → 10 마무리
+// (0/1 고르기) → 곤란 → 첫 생각 → 3 첫 시도의 뜻밖의 결과 → 4 어떻게 → 5 방해꾼/두 번째(진짜 이유) → 6 마지막 조각 → 7 해결 → 8~ 잠 → 10 마무리
 export const SEED_TURN = 3; // 첫 시도의 뜻밖의 결과 (storyEngine의 seed 모드)
-export const WIND_DOWN_TURN = 8; // 이 턴에 해결 + 잠자리 쪽으로 차분하게
+export const WIND_DOWN_TURN = 7; // 이 턴에 해결 + 잠자리 쪽으로 차분하게 (아이는 보통 6~7턴에 졸려 하므로 해결을 7턴에 둔다)
 export const WRAP_UP_TURN = 10; // 이 턴부터는 마무리하도록 강하게 권함 (상한 15턴은 storyEngine)
 
 /**
@@ -203,8 +203,7 @@ export function phaseFor(opts: {
   if (t > windDown) return "sleep";
   if (t === windDown) return "resolve";
   if (t === 5) return villainDue ? "villain" : "second";
-  if (t === 6) return "second";
-  return "payoff"; // 7 (restMode면 5)
+  return villainDue ? "second" : "payoff"; // 6 (방해꾼이 나온 밤은 두 번째 시도에 마지막 조각까지)
 }
 
 /** 뼈대 단계별 지시 (아이 상태 처리 뒤에 붙는다) */
@@ -229,7 +228,7 @@ function beatLine(p: StoryPromptInput, young: boolean): string {
       return `방해꾼 등장: ${n.villain.name}(${n.villain.desc})이(가) 나타나 오늘 밤 해 놓은 것을 하나 망쳐 놓는다(무섭지 않게, 장난처럼). 쫓는 법: ${n.villain.repel} 지금 가진 것: ${n.items} 가진 것이 있으면 무엇을 쓸지, 없으면 어떻게 쫓을지 아이가 정하게 묻는다.${ex} 다음 턴에 쫓아낸 뒤 이 말을 꼭 넣는다: "${n.villain.hint}"`;
     case "second": {
       const afterVillain = p.history[p.history.length - 1]?.narration.includes(n.villain.name);
-      return `${afterVillain ? `아이 말대로 ${n.villain.name}을(를) 쫓아낸다(다치지 않게, 데굴데굴·휘리릭). 가면서 이 말을 그대로 넣는다: "${n.villain.hint}" 그다음 ` : ""}두 번째 시도: 아이의 새 생각대로 하자 거의 다 되는데 한 조각이 남는다. 이때 ${n.hostName}이(가) 진짜 이유를 한 문장으로 알려 준다: ${n.key} 그 이유에 맞춰 마지막으로 무엇을 할지 아이가 정하게 묻는다. 새 인물·새 장소·새 위기는 만들지 않는다.${ex}`;
+      return `${afterVillain ? `아이 말대로 ${n.villain.name}을(를) 쫓아낸다(다치지 않게, 데굴데굴·휘리릭). 가면서 이 말을 그대로 넣는다: "${n.villain.hint}" 그다음 ` : ""}두 번째 시도: 아이의 새 생각대로 하자 거의 다 되는데 한 조각이 남는다. 이때 ${n.hostName}이(가) 진짜 이유를 한 문장으로 알려 준다: ${n.key} 그 이유에 맞춰 마지막으로 무엇을 할지(앞에서 아이가 정한 것이나 가진 것을 어떻게 쓸지) 아이가 정하게 묻는다. 새 인물·새 장소·새 위기는 만들지 않는다.${ex}`;
     }
     case "payoff":
       return `마지막 조각: 아이가 앞에서 정한 이름·주문·방법이나 지금 가진 것(${n.items})이 다시 나와 해결 직전까지 간다(아이 덕분에). 그것을 어떻게 쓸지, 또는 마지막 한 마디를 뭐라고 할지 아이에게 짧게 묻는다. 새 인물·위기는 만들지 않는다.${ex}`;
@@ -338,7 +337,7 @@ function memoryBlock(memory: StoryMemory | null): string {
 function turnInstruction(p: StoryPromptInput): string {
   switch (p.mode) {
     case "ending_sleep":
-      return `아이가 졸리다고 했다. 새 사건 없이 1~2문장으로 아주 조용하고 포근하게 마무리해라. 작별 인사는 따로 붙으니 "잘 자용" 같은 인사는 넣지 않는다. 질문 금지. choices는 []. shouldEnd는 true, endingReason은 "sleep_request".`;
+      return `아이가 졸리다고 했다. ${p.night && p.turnIndex < WRAP_UP_TURN ? `오늘 밤 곤란이 아직 안 풀렸으면 먼저 한 문장으로 풀어 준다: 아이가 앞에서 한 말(정한 이름·방법·주문) 덕분에 ${p.night.resolve.split(". ")[0]}처럼 되게 하고(아이가 안 지은 이름을 지은 것처럼 쓰지 않는다. 이름이 없으면 ${p.night.hostName}이(가) 대신 불러 준다), ${p.night.reward ? `얻는 것(${p.night.reward.split(" — ")[0]})을 한 번 말한다. ` : ""}` : ""}그다음 새 사건 없이 1~2문장으로 아주 조용하고 포근하게 마무리해라. 모두 3문장 이내. 작별 인사는 따로 붙으니 "잘 자용" 같은 인사는 넣지 않는다. 질문 금지. choices는 []. shouldEnd는 true, endingReason은 "sleep_request".`;
     case "ending_timeout":
     case "ending_natural":
       return `${p.plotResolve ? `오늘 이야기의 해결 방향: ${p.plotResolve} ` : ""}지금 이야기를 마무리할 시간이다. 아이의 마지막 말을 반영해 2문장의 따뜻한 결말을 써라. 오늘의 별이 아이 덕분에 어떻게 되었는지 한 문장으로 정리해라. 작별 인사는 따로 붙으니 넣지 않는다. 질문 금지. choices는 []. shouldEnd는 true, endingReason은 "natural".`;
