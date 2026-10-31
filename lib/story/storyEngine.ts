@@ -252,12 +252,16 @@ export async function generateTurn(input: GenerateTurnInput): Promise<GeneratedT
         )
       : "";
   if (!narration) throw new Error("EMPTY_NARRATION");
-  // 위험 신호 응답에는 '믿을 수 있는 어른에게 말하기'가 꼭 들어가야 한다 (문장 줄이기에서 빠지면 코드가 넣는다)
-  if (mode === "safety" && !/(어른|선생님)/.test(narration)) {
+  // 위험 신호 응답에는 '네 잘못이 아니야'와 '믿을 수 있는 어른에게 말하기'가 꼭 들어가야 한다 (빠지면 코드가 넣는다)
+  if (mode === "safety") {
     const parts = splitSentences(narration);
-    const at = Math.min(2, Math.max(1, parts.length - 1));
-    parts.splice(at, 0, "선생님이나 가까운 어른에게 꼭 이야기해 줘용.");
-    narration = parts.join(" ");
+    const missing: string[] = [];
+    if (!/잘못이\s*아니/.test(narration)) missing.push(`그건 ${ctx.childName ? `${ctx.childName} ` : "네 "}잘못이 아니에용.`);
+    if (!/(어른|선생님)/.test(narration)) missing.push("선생님이나 가까운 어른에게 꼭 이야기해 줘용.");
+    if (missing.length) {
+      parts.splice(Math.min(1, parts.length), 0, ...missing);
+      narration = parts.join(" ");
+    }
   }
   // 이야기 용 말투: 문장 끝 '요' → '용' (모델이 빠뜨려도 코드가 맞춘다. 다른 인물의 따옴표 대사는 그대로)
   narration = toYongStyle(narration);
