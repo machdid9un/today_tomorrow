@@ -24,27 +24,27 @@ export interface PlanetView {
 
 const COPY: Record<PlanetId, Omit<PlanetView, "id" | "name" | "tag">> = {
   forest: {
-    description: "폭신한 나무 사이로 작은 집이 보여요. 이야기 용과 함께 우리만의 숲을 만들어 봐요.",
-    short: "우리의 첫 번째 별",
-    greeting: "이름 없는 나무가 기다리고 있어용!",
+    description: "이름을 붙여 주면 구름이 집도 되고 다리도 되는 숲이에요. 아직 이름이 없어 깜깜한 숲에 불빛을 하나씩 켜 봐요.",
+    short: "이름을 붙이면 빛나는 별",
+    greeting: "몽글이가 도와줄 친구를 기다리고 있어용!",
     img: "/kid/planets/forest.webp", iw: 411, ih: 407, gx: 209, gy: 176, bw: 375, mail: [300, 185],
   },
   waterfire: {
-    description: "왼쪽은 찰랑찰랑 물방울 마을, 오른쪽은 몽글몽글 불씨 마을. 두 마을을 친구로 만들어 볼까요?",
+    description: "반달 언덕 양쪽에 물방울 마을과 불씨 마을이 있어요. 서로 좋아하는데 자꾸 엇갈리는 두 마을 사이에 징검돌을 놓아 줘요.",
     short: "물방울과 불씨가 사는 별",
-    greeting: "물방울이랑 불씨가 또 다퉜대용!",
+    greeting: "똘방이랑 타닥이가 또 엇갈렸대용!",
     img: "/kid/planets/waterfire.webp", iw: 408, ih: 425, gx: 205, gy: 202, bw: 400,
   },
   upside: {
-    description: "비는 하늘로 올라가고, 집은 지붕으로 서 있어요. 이 별에서는 말이 거꾸로 일어나요.",
+    description: "뒤죽박죽 마법사가 말을 몽땅 뒤집어 놓은 별이에요. 친구들 말은 반대로 되지만, 네가 지은 주문만은 그대로 이루어져요.",
     short: "모든 게 반대인 별",
-    greeting: "안녕은 잘 가, 빨리는 천천히용!",
+    greeting: "뒤뚱이가 거꾸로 주문을 기다리고 있어용!",
     img: "/kid/planets/upside.webp", iw: 370, ih: 473, gx: 184, gy: 212, bw: 335,
   },
   rainbow: {
-    description: "색깔 친구들이 숨바꼭질 중이에요. 색을 불러 주면 숨어 있던 색깔이 돌아와요.",
-    short: "색깔을 찾아 주는 별",
-    greeting: "색깔 친구들이 숨바꼭질 중이래용!",
+    description: "검은 마왕이 일곱 색깔을 몽땅 빼앗아 가서 온 세상이 회색이 됐어요. 무지개 용사가 되어 색을 하나씩 되찾아요.",
+    short: "일곱 색깔을 되찾는 별",
+    greeting: "알록이가 무지개 용사를 기다리고 있어용!",
     img: "/kid/planets/rainbow.webp", iw: 448, ih: 451, gx: 232, gy: 212, bw: 395,
   },
 };
