@@ -5,11 +5,11 @@ import type { EpisodeContext } from "./contextStore";
 import { chatJSON, hasLlmKey, LlmJsonError, STORY_MODEL } from "./llm";
 import { detectChildName } from "./memorySummarizer";
 import { toYongStyle, withTopic } from "./persona";
-import { buildStoryMessages, CLOSING_LINE, OPENING_GUEST, type TurnMode } from "./prompts";
+import { buildStoryMessages, CLOSING_LINE, OPENING_GUEST, phaseFor, SEED_TURN, WIND_DOWN_TURN, type NightCard, type TurnMode } from "./prompts";
 import { isSafetyConcern } from "./safety";
 import { plotPatternFor } from "./plotPatterns";
 import { resolveSeedDirective, seedSceneHint } from "./seedPresets";
-import { stageDirective, themeFor } from "./themes";
+import { nightBrief, planNight, themeFor } from "./themes";
 
 export { isSafetyConcern };
 
@@ -18,7 +18,6 @@ const HARD_LIMIT_SEC = 10 * 60; // 하드 타임아웃 (실제 경과 시간 기
 // 15턴이 되면 길어도 그때는 반드시 마무리한다.
 const MIN_TURNS_FOR_NATURAL_END = 7;
 const MAX_TURNS = 15;
-const SEED_TURN = 3; // 씨앗 장면 턴 (일반)
 const SHORT_SEED_TURN = 2; // 씨앗 장면 턴 (?short=1)
 const SHORT_LAST_TURN = 3; // ?short=1이면 이 턴에서 마무리
 
@@ -158,7 +157,7 @@ function mockTurn(mode: TurnMode, turnIndex: number): RawTurn {
     };
   }
   return {
-    narration: `(${turnIndex}턴) 사르륵, 흐릿한 빛이 깜빡여용. 저 멀리 무지개 새가 날개를 흔들고 있어용. 무지개 새한테 뭐라고 말해 볼까용?`,
+    narration: `(${turnIndex}턴) 사르륵, 흐릿한 빛이 깜빡여용. 알록이가 하얀 날개를 흔들고 있어용. 알록이한테 뭐라고 말해 볼까용?`,
     choices: ["안녕 할래", "숨어서 볼래"],
     childName: turnIndex === 1 ? "지우" : null,
   };
@@ -178,14 +177,39 @@ export async function generateTurn(input: GenerateTurnInput): Promise<GeneratedT
   // 시즌을 다 끝낸 별이면 회차별 고전 동화 뼈대를 이 별에 맞게 쓴다.
   const theme = themeFor(ctx.episodeId, ctx.themeId);
   const planetProgress = ctx.planets[theme.id] ?? null;
-  const arc = stageDirective(theme, planetProgress, plotPatternFor(ctx.episodeId));
+  // 이 별에 처음 온 회차의 첫 장면: 세계관 소개가 들어가 조금 길어도 된다
+  const introTurn = !(planetProgress?.visits ?? 0) && (askName || turnIndex === 0);
+  // 오늘 밤 정하기: 밤 고르기 턴(게스트 1화는 1, 아니면 0)에 보기 둘을 들려주고, 다음 턴의 아이 대답으로 정한다.
+  const choiceTurn = ctx.history[0]?.narration === OPENING_GUEST || (turnIndex === 0 && !ctx.childName && ctx.episodeNumber <= 1) ? 1 : 0;
+  const answer = turnIndex === choiceTurn + 1 ? childText : turnIndex > choiceTurn + 1 ? ctx.history[choiceTurn + 1]?.childText ?? null : null;
+  const plan = planNight(theme, planetProgress, ctx.episodeId, answer);
+  const needsChoice = plan.needsChoice && !input.short;
+  const brief = nightBrief(theme, planetProgress, plan.night, plotPatternFor(ctx.episodeId));
+  if (input.short) brief.villain.due = false; // 심사용 3턴 회차에는 방해꾼을 넣지 않는다
+  const phase = phaseFor({ turnIndex, choiceTurn, needsChoice, villainDue: brief.villain.due, restMode: ctx.seedPreset === "rest", short: input.short });
+  const night: NightCard = {
+    label: plan.night?.label ?? "자유 모험",
+    finale: brief.finale,
+    goal: brief.goal,
+    hook: brief.hook,
+    method: brief.method,
+    twist: brief.twist,
+    key: brief.key,
+    resolve: brief.resolve,
+    reward: brief.reward,
+    items: brief.items,
+    offered: needsChoice ? plan.offered.map((n) => n.label) : [],
+    chooseLine: theme.season.chooseLine,
+    hostName: theme.host.name,
+    villain: brief.villain,
+  };
   // 부모가 고른 '마음 담기'(용의 태도)는 회차 내내 깔리고, 갈림길 장면에는 한 줄 힌트로 얹힌다
   const seedTone = ctx.seedPreset ? await resolveSeedDirective(ctx.seedPreset, ctx.seedText) : null;
   let mode = decideMode(input, true);
   let seedDirective: string | null = null;
   if (mode === "seed") {
     const hint = seedSceneHint(ctx.seedPreset);
-    seedDirective = hint ? `${arc.directive}\n오늘의 마음 담기: ${hint}` : arc.directive;
+    seedDirective = hint ? `${brief.directive}\n오늘의 마음 담기: ${hint}` : brief.directive;
   }
   if (mode === "seed" && !seedDirective) mode = "normal";
   const canSuggestEnd =
@@ -212,17 +236,16 @@ export async function generateTurn(input: GenerateTurnInput): Promise<GeneratedT
           seedDirective,
           askName,
           short: input.short,
-          afterSeed: turnIndex === (input.short ? SHORT_SEED_TURN : SEED_TURN) + 1,
           episodeKey: ctx.episodeId,
-          // 갈림길 바로 다음 턴에만: 오늘의 별 시즌 단계의 해결 방향 (부모 씨앗이 있어도 오늘의 목표는 풀리게).
-          // 주의: 턴마다 매번 같은 resolve 문구를 다시 주면, 모델이 "아직 안 풀렸다"로 오해하고
-          // 이미 끝난 장면(예: "징검돌이 놓였다")을 매 턴 또 narration으로 반복해 이야기가 헛돈다.
-          // 한 번만 주고, 그 뒤는 대화 기록 + questionPlan(afterSeed/WIND_DOWN 등)이 자연스럽게 이어가게 한다.
+          // 해결 방향은 해결하는 턴(8턴·마무리)에 한 번만 준다 (매 턴 반복하면 모델이 끝난 장면을 되풀이한다)
           plotResolve:
-            turnIndex === (input.short ? SHORT_SEED_TURN : SEED_TURN) + 1 ? arc.resolve : undefined,
+            turnIndex === (input.short ? SHORT_LAST_TURN : WIND_DOWN_TURN) || mode === "ending_natural" || mode === "ending_timeout"
+              ? brief.resolve
+              : undefined,
           themeId: theme.id,
           planetProgress,
-          arcGoal: arc.goal,
+          night,
+          phase,
           seedTone,
           restMode: ctx.seedPreset === "rest",
         }),
@@ -255,13 +278,14 @@ export async function generateTurn(input: GenerateTurnInput): Promise<GeneratedT
       ? trimNarration(
           raw.narration.trim(),
           shouldEnd,
-          askName
-            ? "누가 도와 달라고 했을까용?"
+          phase === "choose" && night.offered.length >= 2
+            ? `${night.offered[0]}한테 갈까용, 아니면 ${night.offered[1]}한테 갈까용?`
             : /이름/.test(raw.narration) // 이름 짓기 턴인데 질문이 빠진 경우
               ? "이 친구 이름을 뭐라고 지어 줄까용?"
               : `${withTopic(ctx.childName)} 어떻게 하고 싶어용?`,
-          // 안전 응답('어른에게 말하기')과 갈림길 장면(받아 주기 + 장면 설명 + 질문)은 잘리지 않게 4문장까지
-          mode === "safety" || mode === "seed" ? 5 : 4
+          // 안전 응답('어른에게 말하기')과 갈림길 장면(받아 주기 + 장면 설명 + 질문)은 잘리지 않게 5문장까지,
+          // 처음 온 별의 첫 장면(인사 + 세계관 + 역할 + 곤란 + 질문)은 6문장까지
+          introTurn || phase === "hook" ? 6 : mode === "safety" || mode === "seed" ? 5 : 4
         )
       : "";
   if (!narration) throw new Error("EMPTY_NARRATION");
@@ -286,6 +310,7 @@ export async function generateTurn(input: GenerateTurnInput): Promise<GeneratedT
         .slice(0, 2)
     : [];
 
+  if (phase === "choose" && night.offered.length >= 2 && !shouldEnd) choices = [...night.offered];
   if (shouldEnd) {
     choices = [];
     if (!narration.includes(CLOSING_LINE)) narration = `${narration} ${CLOSING_LINE}`;

@@ -8,7 +8,7 @@ import { chatJSON, hasLlmKey, REPORT_MODEL, type ChatMessage } from "./llm";
 import { withSubject } from "./persona";
 import { CLOSING_LINE } from "./prompts";
 import { hasPersonalInfo, isSafetyConcern } from "./safety";
-import { progressLine, RAINBOW_COLORS, remainingColors, type PlanetProgress, type StoryTheme } from "./themes";
+import { progressLine, remainingColors, type PlanetNight, type PlanetProgress, type StoryTheme } from "./themes";
 
 export interface SummarizeEpisodeInput {
   turns: TurnRecord[];
@@ -17,7 +17,7 @@ export interface SummarizeEpisodeInput {
   childName: string | null;
   episodeNumber: number;
   /** 오늘의 별과 시즌 진행 (없으면 별 정보 없이 정리) */
-  planet?: { theme: StoryTheme; progress: PlanetProgress | null; goal: string; stageId: string } | null;
+  planet?: { theme: StoryTheme; progress: PlanetProgress | null; goal: string; stageId: string; night?: PlanetNight | null } | null;
 }
 
 /** 오늘 이 별에서 생긴 일 (시즌 진행 계산용) */
@@ -540,13 +540,13 @@ function buildSystemPrompt(callName: string): string {
 
 [문단 뼈대 — 이번 이야기의 내용으로 채운다. 매 회차 같은 문장으로 시작하거나 끝내지 않는다]
 1문단: 소리 단서(대화에 나온 소리·빛·냄새)나 장면으로 시작하고("○○ 행성의 밤이에요" 같은 같은 틀로 매번 시작하지 않는다), 그 단서로 만든 후렴을 처음 들려준다.
-2문단: 도와 달라던 친구를 만난다. 아이의 첫 대사를 인용하고, 이름을 지어 줬으면 그 일을 적는다.
-3문단: 생긴 문제 하나와 감각 묘사 하나.
-4문단: 아이의 결정을 대사로 인용한다.
-5문단: 그 결정 덕분에 달라진 결과, 고르지 않은 쪽의 포근한 정리, 후렴 두 번째.
+2문단: 단짝 친구(또는 도와 달라던 친구)가 무엇을 바라는데 무엇이 막고 있는지. 아이의 첫 대사를 인용하고, 이름을 지어 줬으면 그 일을 적는다.
+3문단: 아이의 첫 생각과, 그대로 해 봤더니 생긴 뜻밖의 결과(반만 되거나 웃긴 일). 감각 묘사 하나.
+4문단: 아이의 다음 생각(앞에서 아이가 정한 이름·물건이 다시 나오면 꼭 적는다)을 대사로 인용한다.
+5문단: 그 생각 덕분에 문제가 풀리고 별이 어떻게 달라졌는지, 후렴 두 번째.
 6문단: 소리와 빛이 잦아드는 밤.
 7문단: 후렴을 잠 쪽으로 바꾼 짧은 마지막 문장(이번 이야기의 친구나 물건으로 끝낸다).
-짧은 이야기면 2·3문단이나 5·6문단을 합쳐 5문단으로 써도 된다.
+대화에 없는 시도·결과는 지어내지 않는다(첫 시도가 대화에 없었으면 3문단을 건너뛴다). 짧은 이야기면 2·3문단이나 5·6문단을 합쳐 5문단으로 써도 된다.
 
 3) islandTitle — 오늘 이야기의 장소 이름(오늘의 별 안의 한 곳). 2~8글자로 귀엽게(예: "반딧불 오두막", "별사탕 언덕").
 4) episodeTitle — 오늘 이야기의 제목. 20자 이내(예: "다친 고래와 떠나는 배").
@@ -592,12 +592,12 @@ function transcriptLines(turns: TurnRecord[], skipNameQA: boolean): string[] {
 
 function planetBlock(planet: SummarizeEpisodeInput["planet"]): string[] {
   if (!planet) return [];
-  const { theme, progress, goal } = planet;
-  const found = (progress?.collected ?? []).filter((c) => RAINBOW_COLORS.includes(c)).length;
+  const { theme, progress, goal, night } = planet;
+  const found = remainingColors(progress).length;
   return [
     `[오늘의 별] ${theme.planet} — ${theme.tag}. 놀이: ${theme.play}.`,
-    `시즌 줄거리: ${progressLine(theme, progress)}`,
-    `오늘 밤 목표: ${goal}.${theme.id === "rainbow" && ["find_primary", "mix_secondary", "night_color"].includes(planet.stageId) ? ` 오늘 색을 찾았다면 이제 일곱 색 중 ${found + 1}가지를 찾은 것이다.` : ""}`,
+    `시즌 줄거리: ${progressLine(theme, progress, night ?? null)}`,
+    `오늘 밤 목표: ${goal}.${night ? ` 곤란: ${night.hook} 얻는 것: ${night.reward.name}. (해결 장면은 대화에 실제로 나온 대로만 쓴다. 아이가 이름·주문을 말하지 않았으면 지은 것처럼 쓰지 않는다.)` : ""}${theme.id === "rainbow" && night && !night.finale ? ` 오늘 색을 되찾았다면 이제 일곱 색 중 ${7 - found + 1}가지를 되찾은 것이다.` : ""}`,
     "",
   ];
 }
