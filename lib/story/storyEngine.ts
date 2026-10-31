@@ -22,7 +22,7 @@ const SHORT_SEED_TURN = 2; // 씨앗 장면 턴 (?short=1)
 const SHORT_LAST_TURN = 3; // ?short=1이면 이 턴에서 마무리
 
 const SLEEP_PATTERN =
-  /(잘래|잘게|잘\s?거야|잘\s?꺼야|졸려|졸리|자고\s?싶|잠\s?와|잠이\s?와|이제\s?자|그만\s?할래|그만\s?하고\s?싶|굿\s?나잇)/;
+  /(잘래|잘게|잘\s?거야|잘\s?꺼야|졸려|졸리(?!다고)|자고\s?싶|잠\s?와|잠이\s?와|이제\s?자(?![동전장기리크])|그만\s?할래|그만\s?하고\s?싶|굿\s?나잇)/;
 
 export interface GenerateTurnInput {
   ctx: EpisodeContext;
@@ -206,6 +206,10 @@ export async function generateTurn(input: GenerateTurnInput): Promise<GeneratedT
   // 부모가 고른 '마음 담기'(용의 태도)는 회차 내내 깔리고, 갈림길 장면에는 한 줄 힌트로 얹힌다
   const seedTone = ctx.seedPreset ? await resolveSeedDirective(ctx.seedPreset, ctx.seedText) : null;
   let mode = decideMode(input, true);
+  // 이 턴에 반드시 넣을 마음 담기 장면 (졸려서 끝나는 턴도 '잠들기 전 한 번 더'가 들어가야 마지막 인상에 남는다)
+  const seedBeat = seedTone
+    ? seedBeatFor(ctx.seedPreset, mode === "ending_sleep" ? "sleep" : mode === "ending_natural" || mode === "ending_timeout" ? "wrap" : phase, ctx.childName?.trim() || "친구")
+    : null;
   let seedDirective: string | null = null;
   if (mode === "seed") {
     const hint = seedSceneHint(ctx.seedPreset);
@@ -247,7 +251,7 @@ export async function generateTurn(input: GenerateTurnInput): Promise<GeneratedT
           night,
           phase,
           seedTone,
-          seedBeat: seedTone ? seedBeatFor(ctx.seedPreset, phase, ctx.childName?.trim() || "친구") : null,
+          seedBeat,
           restMode: ctx.seedPreset === "rest",
         }),
         maxTokens: 600,
@@ -286,7 +290,9 @@ export async function generateTurn(input: GenerateTurnInput): Promise<GeneratedT
               : `${withTopic(ctx.childName)} 어떻게 하고 싶어용?`,
           // 안전 응답('어른에게 말하기')과 갈림길 장면(받아 주기 + 장면 설명 + 질문)은 잘리지 않게 5문장까지,
           // 처음 온 별의 첫 장면(인사 + 세계관 2 + 역할 + 단짝 말 2 + 질문)은 7문장까지
-          introTurn ? 7 : phase === "hook" ? 6 : mode === "safety" || mode === "seed" ? 5 : 4
+          // 방해꾼 턴(망침·물러남·단서·진짜 이유·질문)과 해결 턴(해결·마음 담기·얻는 것·조용한 장면·질문), 마음 담기 문장이 붙는 턴은 6문장까지
+          // (4문장으로 자르면 트리머가 둘째 문장 = 마음 담기 자리를 정확히 지운다)
+          introTurn ? 7 : phase === "hook" || phase === "villain" || phase === "resolve" || seedBeat ? 6 : mode === "safety" || mode === "seed" ? 5 : 4
         )
       : "";
   if (!narration) throw new Error("EMPTY_NARRATION");

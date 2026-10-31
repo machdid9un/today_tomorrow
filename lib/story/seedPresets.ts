@@ -7,6 +7,7 @@
 //  - 마음 담기는 한 번의 이야기에만 쓴다(회차 종료 시 비우는 건 역할 1의 complete 담당: seedConsumed).
 import type { SeedPreset } from "@/types";
 import { chatJSON, hasLlmKey, STORY_MODEL } from "./llm";
+import { hasBatchim } from "./persona";
 
 export type SeedOption = Exclude<SeedPreset, "custom">;
 
@@ -16,7 +17,7 @@ export const SEED_OPTIONS: SeedOption[] = ["courage", "praise", "company", "rest
 /** 이야기 전체에 깔리는 용의 태도 (매 턴 프롬프트에 들어감) */
 export const SEED_TONE_DIRECTIVES: Record<SeedOption, string> = {
   courage:
-    "오늘은 '용기 북돋기'. 아이(또는 이야기 속 친구)가 망설이는 순간이 오면 이야기 용이 '할 수 있어용, 내가 옆에 있어용'처럼 믿어 주는 말을 한 번 해 준다(회차에 1~2번). 강요하지 않는다: 아이가 무섭다·싫다고 하면 '괜찮아용, 다른 길로 가도 돼용' 하고 다른 방법을 함께 찾는다. 해내면 크게 칭찬하기보다 함께 기뻐한다.",
+    "오늘은 '용기 북돋기'. 아이(또는 이야기 속 친구)가 망설이는 순간이 오면 이야기 용이 '할 수 있어용, 내가 옆에 있어용'처럼 믿어 주는 말을 해 준다(턴 지시에 [오늘의 마음 담기]가 붙은 턴마다 한 문장). 강요하지 않는다: 아이가 무섭다·싫다고 하면 '괜찮아용, 다른 길로 가도 돼용' 하고 다른 방법을 함께 찾는다. 해내면 크게 칭찬하기보다 함께 기뻐한다.",
   praise:
     "오늘은 '칭찬해주기'. 아이가 낸 생각이나 한 일이 이야기에 변화를 만들면, 이야기 용이 그 구체적인 행동과 결과를 짚어 고마워한다('네가 이름을 지어 줘서 나무가 반짝 웃었어용', '네 생각 덕분에 둘이 같이 앉았어용'). '잘했어', '착하다', '똑똑하다', '최고야' 같은 평가 말은 쓰지 않는다. 회차에 2~3번, 꾸밈없이.",
   company:
@@ -27,7 +28,7 @@ export const SEED_TONE_DIRECTIVES: Record<SeedOption, string> = {
 
 /** 갈림길 장면에 덧붙일 한 줄 (오늘의 별 시즌 장면 위에 얹힘) */
 export const SEED_SCENE_HINTS: Record<SeedOption, string> = {
-  courage: "이 장면에 아이가 해낼 수 있는 작은 도전(높은 계단 한 칸, 어두운 굴 입구에서 불 켜기 같은) 하나를 넣고, 이야기 용이 믿어 주는 말을 한 번 한다. 돌아가는 길도 늘 열어 둔다.",
+  courage: "이 장면 안에서 이미 해야 할 한 걸음(새 소품·새 장소 없이)을 아이가 조금 두근거리며 해 보게 하고, 이야기 용이 믿어 주는 말을 한 번 한다. 돌아가는 길도 늘 열어 둔다.",
   praise: "아이가 고른 쪽이 장면을 바꾸면, 다음 턴에 이야기 용이 그 선택이 만든 변화를 구체적으로 짚어 고마워한다.",
   company: "어느 쪽을 골라도 이야기 용이 아이와 함께 간다는 걸 장면에서 보여 준다('나도 같이 갈게용').",
   rest: "갈림길은 둘 다 포근한 쪽으로(예: 별 이불 덮기 / 구름 베개 베기) 고르기 쉽게 만들고, 문제는 작고 금방 풀리게 한다.",
@@ -140,8 +141,8 @@ export function seedSceneHint(preset: SeedPreset | null): string | null {
  */
 export const SEED_BEAT_LINES: Record<SeedOption, Partial<Record<string, string>>> = {
   courage: {
-    hook: "오늘 밤 곤란에 살짝 두근거릴 거리(어두운 굴 입구, 높은 바위 한 칸, 커다란 소리) 하나를 넣는다. 무섭게는 말고 '조금 떨리는' 정도.",
-    how: "망설이는 순간을 만든다: 다음 한 걸음이 조금 겁나는 자리에서 이야기 용이 반드시 이 뜻의 말을 한 문장 한다: '조금 두근거려도 괜찮아용. 내가 바로 옆에 있어용. {name}라면 할 수 있어용.' 돌아가는 길도 열어 둔다('무서우면 다른 길로 가도 돼용').",
+    hook: "오늘 밤 곤란 속에 이미 있는 한 걸음(그 친구 쪽으로 다가가기, 말 걸기)을 '조금 두근거리는' 순간으로 그린다. 새 소품·새 장소는 만들지 않고, 무섭게도 하지 않는다.",
+    how: "망설이는 순간을 만든다: 다음 한 걸음이 조금 겁나는 자리에서 이야기 용이 반드시 이 뜻의 말을 한 문장으로 한다: '내가 바로 옆에 있어용, {name}(이)라면 할 수 있어용.' 돌아가는 길도 열어 둔다('무서우면 다른 길로 가도 돼용').",
     villain: "방해꾼 앞에서 이야기 용이 '내가 옆에 있어용, 같이 해 보자용' 하고 믿어 주는 말을 한 번 한다.",
     second: "한 조각이 남아 아이가 다시 나서야 할 때, 이야기 용이 '아까도 해냈잖아용' 하고 짧게 믿어 준다.",
     resolve: "해결 문장 바로 뒤에 이야기 용이 아이가 한 일을 또렷하게 짚어 준다(평가 말 없이, 꼭 한 문장): '두근거렸는데도 한 발 내밀었지용. 그게 바로 용기예용.'",
@@ -176,5 +177,10 @@ export const SEED_BEAT_LINES: Record<SeedOption, Partial<Record<string, string>>
 export function seedBeatFor(preset: SeedPreset | null, phase: string | undefined, callName: string): string | null {
   if (!preset || preset === "custom" || !phase) return null;
   const line = SEED_BEAT_LINES[preset]?.[phase];
-  return line ? line.replace(/\{name\}/g, callName) : null;
+  if (!line) return null;
+  const b = hasBatchim(callName);
+  return line
+    .replace(/\{name\}\(이\)라면/g, `${callName}${b ? "이라면" : "라면"}`)
+    .replace(/\{name\}는/g, `${callName}${b ? "은" : "는"}`)
+    .replace(/\{name\}/g, callName);
 }

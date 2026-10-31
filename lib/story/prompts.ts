@@ -2,7 +2,7 @@
 // 원칙: 스토리 엔진은 이야기만 한다. 아이를 평가·분석하지 않고, 현실을 캐묻지 않는다.
 import type { StoryMemory } from "@/types";
 import type { ChatMessage } from "./llm";
-import { DRAGON_NAME, hasBatchim, vocative, withTopic } from "./persona";
+import { DRAGON_NAME, hasBatchim, vocative, withSubject, withTopic } from "./persona";
 import { hasPersonalInfo } from "./safety";
 import { themeContext, themeFor, type PlanetProgress } from "./themes";
 
@@ -35,8 +35,8 @@ export const STORY_SYSTEM_PROMPT = `너는 '상상 무전기'의 주인공 '${DR
    아이의 말은 오늘의 별에 눈에 보이는 변화를 일으킨다(이름을 지어 주면 나무가 반짝, 색을 말하면 그 색으로 물듦, 주문을 외치면 비가 거꾸로). 정답은 없다. 엉뚱한 대답일수록 더 재미있는 변화로 받는다.
    "~했군용", "~라고 했죵" 같은 확인 말투로 매번 시작하지 않는다. "괜찮아용"을 매 턴 되풀이하지 않는다.
    아이 말을 평가·칭찬·정정하지 않는다("잘했어용", "멋지다", "귀여운 이름이에용", "틀렸어" 금지). 이야기로만 받는다.
-3. narration의 마지막은 아이에게 묻는 질문 1개다. 한 턴에 질문은 하나만이고, 이야기 문장 중간에 '그건 무엇일까용?' 같은 혼잣말 질문도 쓰지 않는다. 질문 방식은 [이번 턴 질문] 지시를 따른다.
-   질문은 짧게(10어절 이내). 바로 앞 문장에 답의 단서가 되는 소리·빛·모양을 하나 심어 두어 네 살 아이도 한두 단어로 답할 수 있게 한다(예: "쿵쿵, 커다란 발소리가 들려용. 누구 발소리일까용?").
+3. narration의 마지막은 아이에게 묻는 질문 1개다. 한 턴에 질문은 하나만이고, 이야기 문장 중간에 '그건 무엇일까용?' 같은 혼잣말 질문도 쓰지 않는다. 질문 방식은 [이번 턴 할 일] 지시를 따른다.
+   질문은 짧게(10어절 이내). 바로 앞 문장에 아이가 붙잡고 말할 거리(소리·빛·물건)를 하나 보여 주어 네 살 아이도 한두 단어로 답할 수 있게 한다(예: "사자 발밑 돌이 따뜻해졌어용. 사자한테 뭐라고 말해 줄까용?"). 정답을 맞히게 하는 질문('누구일까용?', '무슨 색일까용?')은 쓰지 않고, 아이가 정하는 질문('뭐라고 해 줄까용?', '어떻게 해 볼까용?')을 한다.
    '~할까용?' 하나로 끝나 '응/아니'로 답하게 되는 질문은 쓰지 않는다. 고르게 할 때는 아이가 화면을 안 봐도 알 수 있게 "A할까용, 아니면 B할까용?"처럼 두 가지를 짧게 말로 들려준다.
 4. choices는 질문 속 두 가지(열린 질문이면 아이가 할 법한 대답 예시 두 개)를 아이 말투로 짧게(예: "곁에 남을래", "배 탈래"). 각 12자 이내. 아이는 선택지와 다른 말을 해도 되고, 그 말이 우선이다.
    아이가 "몰라"라고 하거나 대답이 없거나 아주 짧으면 다그치지 말고 이야기를 조금 이어 준 뒤, 쉬운 두 가지 보기로 묻는다. 같은 질문을 되풀이하지 않는다.
@@ -137,7 +137,8 @@ function worldIntro(p: StoryPromptInput): string {
 }
 
 const DONT_KNOW = /(몰라|모르겠|모르겟|글쎄|몰루|모름)/;
-const MINIMAL = /^(응|어|음|엉|웅|네|예|아니|아니요|글쎄)$/; // 대답이라 보기 어려운 아주 짧은 말
+const MINIMAL = /^(어|음|엉|웅|글쎄|그거|저기|[어그저기음\s…]+)$/; // 대답이라 보기 어려운 아주 짧은 말·더듬기("어 그 저기 음")
+const AGREE = /^(응|네|예|좋아|그래|오케이|오키)[.!~]*$/; // 짧은 동의 → 바로 앞 제안(첫 보기)에 '응'한 것
 const REFUSE = /(둘\s*다\s*싫|싫어|다른\s*(거|걸|것|놀이|이야기)|딴\s*(거|놀이)|안\s*할래|아니야|아닌데|하기\s*싫)/;
 
 function compact(s: string): string {
@@ -171,9 +172,9 @@ function isConfused(text: string): boolean {
 }
 // '어려워'·'힘들어': 더 묻지 말고 같이 해 준다
 const TOO_HARD = /(어려워|어렵|힘들어|힘들다|못\s*하겠|못하겠)/;
-const CHILD_ASKED = /(\?|뭐야|몇\s*살|어디야|누구야|왜\s|왜$|뭐\s*좋아|좋아해\??$)/;
+const CHILD_ASKED = /(\?|뭐야|몇\s*살|어디야|누구야|왜\s|왜$|뭐\s*좋아|좋아해\?$)/;
 // 아이가 자기 마음을 말한 경우 (인물 묘사 '무서운 괴물'은 제외: 아이 자신이 주어인 짧은 말만)
-const FEELING = /^(나\s*)?(무서워|무섭다|슬퍼|슬프다|외로워|울고\s*싶어|엄마\s*보고\s*싶어|보고\s*싶어)[.!~]*$/;
+const FEELING = /^(나\s*)?(싫어\s*)?(무서워|무섭다|무서운데|슬퍼|슬프다|외로워|울고\s*싶어|(엄마|아빠)(가|는)?\s*보고\s*싶어|보고\s*싶어)(요|용)?[.!~]*$/;
 // 회차 길이(리드 확정: 최소 7턴, 최대 15턴)에 맞춘 뼈대:
 // (0/1 고르기) → 곤란 → 첫 생각 → 3 첫 시도의 뜻밖의 결과 → 4 어떻게 → 5 방해꾼/두 번째(진짜 이유) → 6 마지막 조각 → 7 해결 → 8~ 잠 → 10 마무리
 export const SEED_TURN = 3; // 첫 시도의 뜻밖의 결과 (storyEngine의 seed 모드)
@@ -218,7 +219,7 @@ function beatLine(p: StoryPromptInput, young: boolean): string {
   switch (p.phase) {
     case "choose": {
       const [a, b] = n.offered;
-      return `${worldIntro(p)}그다음 ${n.hostName}이(가) 전하는 말로 남은 일을 알린다: ${n.chooseLine} 그리고 '${a}'와 '${b}' 중 어디부터 가 볼지 한 문장으로 묻는다('${a}한테 갈까용, 아니면 ${b}한테 갈까용?'). 이번 턴엔 곤란의 내용은 아직 말하지 않는다(가서 본다). choices는 ["${a}", "${b}"].`;
+      return `${worldIntro(p)}그다음 ${withSubject(n.hostName)} 전하는 말로 남은 일을 알린다: ${n.chooseLine} 그리고 '${a}'와 '${b}' 중 어디부터 가 볼지 한 문장으로 묻는다('${a}한테 갈까용, 아니면 ${b}한테 갈까용?'). 이번 턴엔 곤란의 내용은 아직 말하지 않는다(가서 본다). choices는 ["${a}", "${b}"].`;
     }
     case "hook":
       return `${n.offered.length >= 2 ? `아이가 '${n.label}' 쪽을 골랐다(또는 그쪽으로 간다). 그곳에 도착하는 한 문장. ` : worldIntro(p)}오늘 밤의 곤란을 2문장으로 또렷하게 보여 준다(누가 무엇을 바라는데 무엇이 막고 있는지. 해결 방법은 아직 말하지 않는다): ${n.hook} 그다음 아이가 이야기에 처음 들어오는 짧은 질문 하나: 가까이 가서 무엇을 할지, 또는 그 친구에게 뭐라고 해 줄지 두 갈래로 묻는다('A할까용, 아니면 B할까용?').`;
@@ -227,11 +228,11 @@ function beatLine(p: StoryPromptInput, young: boolean): string {
     case "twist":
       return `첫 시도의 뜻밖의 결과를 보여 주는 턴이다(아래 [장면] 지시대로).`;
     case "how":
-      return `뜻밖의 결과를 보고 아이가 다음에 어떻게 할지 묻는다. 질문 바로 앞 문장에 답의 단서를 하나 심는다(${n.hostName}이(가) 눈치챈 것, 가진 것, 앞에서 아이가 정한 것 중 하나): '…이 반짝이는 것 같아용. 이번엔 어떻게 해 볼까용?'. 막연한 '어떻게 할까용?'만 던지지 않는다. 아이의 첫 생각을 버리지 말고 거기에 보태는 쪽으로. 새 인물·새 장소는 만들지 않는다.${ex}`;
+      return `뜻밖의 결과를 보고 아이가 다음에 어떻게 할지 묻는다. 질문 바로 앞 문장에 아이가 붙잡고 말할 거리를 하나 보여 준다(${withSubject(n.hostName)} 눈치챈 것, 가진 것, 앞에서 아이가 정한 것 중 하나): '…이 반짝이는 것 같아용. 이번엔 어떻게 해 볼까용?'. 막연한 '어떻게 할까용?'만 던지지 않고, 정답 맞히기('누구일까용?', '무슨 색일까용?')도 하지 않는다. 아이의 첫 생각을 버리지 말고 거기에 보태는 쪽으로. 새 인물·새 장소는 만들지 않는다.${ex}`;
     case "villain":
-      return `방해꾼이 잠깐 끼어드는 턴(이 한 턴 안에서 끝낸다): ${n.villain.name}(${n.villain.desc})이(가) 나타나 오늘 밤 해 놓은 것을 하나 살짝 망쳐 놓는다(무섭지 않게, 장난처럼, 1문장). 아이가 앞에서 정한 것이나 지금 가진 것(${n.items})으로 바로 물러나게 한다(1문장. 참고: ${n.villain.repel}). 가면서 이 말을 그대로 넣는다: "${n.villain.hint}" 그다음 오늘 밤 곤란으로 돌아와, ${n.hostName}이(가) 진짜 이유를 한 문장으로 알려 준다: ${n.key} 그 이유에 맞춰 다음에 무엇을 할지 아이가 정하게 묻는다(질문 앞 문장에 단서).${ex}`;
+      return `방해꾼이 잠깐 끼어드는 턴(이 한 턴 안에서 끝낸다): ${n.villain.name}(${n.villain.desc})이(가) 나타나 오늘 밤 해 놓은 것을 하나 살짝 망쳐 놓는다(무섭지 않게, 장난처럼, 1문장). 아이가 앞에서 정한 것이나 지금 가진 것(${n.items})으로 바로 물러나게 한다(1문장. 참고: ${n.villain.repel}). 가면서 이 말을 그대로 넣는다: "${n.villain.hint}" 그다음 오늘 밤 곤란으로 돌아와, ${withSubject(n.hostName)} 진짜 이유를 한 문장으로 알려 준다: ${n.key} 그 이유에 맞춰 다음에 무엇을 할지 아이가 정하게 묻는다(질문 앞 문장에 말할 거리 하나).${ex}`;
     case "second":
-      return `두 번째 시도: 아이의 새 생각대로 하자 거의 다 되는데 한 조각이 남는다. 이때 ${n.hostName}이(가) 진짜 이유를 한 문장으로 알려 준다: ${n.key} 그 이유에 맞춰 마지막으로 무엇을 할지(앞에서 아이가 정한 것이나 가진 것을 어떻게 쓸지) 아이가 정하게 묻는다(질문 앞 문장에 단서). 새 인물·새 장소·새 위기는 만들지 않는다.${ex}`;
+      return `두 번째 시도: 아이의 새 생각대로 하자 거의 다 되는데 한 조각이 남는다. 이때 ${withSubject(n.hostName)} 진짜 이유를 한 문장으로 알려 준다: ${n.key} 그 이유에 맞춰 마지막으로 무엇을 할지(앞에서 아이가 정한 것이나 가진 것을 어떻게 쓸지) 아이가 정하게 묻는다(질문 앞 문장에 말할 거리 하나). 새 인물·새 장소·새 위기는 만들지 않는다.${ex}`;
     case "payoff":
       return `마지막 조각: 아이가 앞에서 정한 이름·주문·방법이나 지금 가진 것(${n.items})이 다시 나와 해결 직전까지 간다(아이 덕분에). 그것을 어떻게 쓸지, 또는 마지막 한 마디를 뭐라고 할지 아이에게 짧게 묻는다(질문 앞 문장에 그 물건·이름을 단서로 보여 준다). 새 인물·위기는 만들지 않는다.${ex}`;
     case "resolve":
@@ -253,11 +254,13 @@ export function questionPlan(p: StoryPromptInput): string {
   const text = p.childText.trim();
   const young = p.childAge === null || p.childAge <= 5; // 나이를 모르면 어린 쪽에 맞춘다
   const parts: string[] = [];
-  let beat = beatLine(p, young);
-  if (p.seedBeat) beat += ` [오늘의 마음 담기 — 이 턴에 꼭] ${p.seedBeat}`;
-  // 같은 모양의 고르기 질문('A할까용, 아니면 B할까용?')이 두 턴 연속이면 이번엔 단서 + 열린 질문으로 바꾼다
+  // 같은 모양의 고르기 질문('A할까용, 아니면 B할까용?' / '○○할까용, △△할까용?')이 두 턴 연속이면 이번엔 단서 + 열린 질문으로 바꾼다
   const lastTwo = p.history.slice(-2).map((t) => t.narration);
-  if (lastTwo.length === 2 && lastTwo.every((n) => /아니면/.test(n)) && !["choose", "hook", "twist", "wrap"].includes(p.phase ?? "")) {
+  const consecutiveAB =
+    lastTwo.length === 2 && lastTwo.every((n) => /(아니면|할까용,\s*\S+할까용)/.test(n)) && !["choose", "hook", "twist", "wrap"].includes(p.phase ?? "");
+  let beat = beatLine(p, young && !consecutiveAB); // 열린 질문으로 바꾸는 턴엔 '예시 두 개 붙이기' 지시를 같이 주지 않는다 (모순 방지)
+  if (p.seedBeat) beat += ` [오늘의 마음 담기 — 이 턴에 꼭, 한 문장] ${p.seedBeat}`;
+  if (consecutiveAB) {
     beat += " 앞 두 턴이 모두 고르기 질문이었다. 이번엔 'A할까용, 아니면 B할까용?' 대신 바로 앞 문장에 소리·빛·물건 단서를 하나 심고 아이가 자기 말로 채우는 짧은 열린 질문을 한다(예: '…이 반짝여용. 뭐라고 불러 줄까용?'). choices에만 예시 두 개를 넣는다.";
   }
   if (p.themeId === "waterfire" && (p.phase === "first_idea" || p.phase === "how")) {
@@ -268,7 +271,7 @@ export function questionPlan(p: StoryPromptInput): string {
   if (p.phase === "choose" || p.phase === "hook" || p.phase === "twist") {
     if (p.turnIndex > 0 && CHILD_ASKED.test(text) && !isConfused(text)) parts.push("아이가 질문을 했다. 먼저 이야기 용으로서 한 문장으로 다정하게 답해 준다.");
     parts.push(beat);
-    return `[이번 턴 질문] ${parts.join(" ")}`;
+    return `[이번 턴 할 일] ${parts.join(" ")}`;
   }
 
   if (p.turnIndex > 0 && CHILD_ASKED.test(text) && !isConfused(text)) {
@@ -279,12 +282,18 @@ export function questionPlan(p: StoryPromptInput): string {
     parts.push(
       "아이가 방금 말을 잘 못 알아들었다('뭐?'). 아이 말('뭐?', 'What?')을 이야기 속 사건으로 만들지 않는다. 방금 장면을 아주 쉬운 말 한 문장으로 다시 들려주고, 같은 질문을 더 짧게, 보기 두 개를 말로 붙여 다시 묻는다('A일까용, 아니면 B일까용?'). 이번 턴은 새 사건 없이 이것만 한다(3문장 이내)."
     );
-    return `[이번 턴 질문] ${parts.join(" ")}`;
+    return `[이번 턴 할 일] ${parts.join(" ")}`;
   }
   if (p.turnIndex > 0 && TOO_HARD.test(text)) {
     parts.push(
       `아이가 어렵다고 했다. 같은 놀이를 또 시키거나 새 문제를 내지 않는다. 이야기 용과 ${p.night?.hostName ?? "단짝 친구"}가 먼저 해 보이고, 아이는 아주 쉬운 한 마디만 같이 하게 한다('하나, 둘, 셋 하고 같이 외쳐 줄래용?'). 그 한 마디로 이번 단계가 한 걸음 풀리게 그린다.`
     );
+    handled = true;
+  } else if (p.turnIndex > 0 && AGREE.test(text)) {
+    parts.push("아이가 '응/네/좋아'처럼 짧게 동의했다. 바로 앞 질문의 첫 번째 제안(또는 이야기 용이 하자고 한 것)에 그러자고 한 것으로 보고, 되묻지 말고 그대로 한 걸음 진행한다.");
+    handled = true;
+  } else if (p.turnIndex > 0 && FEELING.test(text)) {
+    parts.push("아이가 자기 마음을 말했다(무서워·슬퍼·보고 싶어). 먼저 한 문장으로 받아 준다(이야기 용이 곁에 있다는 말, 예: '무서울 땐 내가 꼭 옆에 있을게용.'). 무서운 것은 작고 귀엽게 바꾸거나 불빛을 켜 주고, 그다음 부담 없는 질문 하나만 한다. 현실을 캐묻지 않는다.");
     handled = true;
   } else if (p.turnIndex > 0 && (!text || MINIMAL.test(compact(text)) || DONT_KNOW.test(text))) {
     // '몰라' 사다리: ① 쉬운 힌트로 다시 → ② 두 가지 보기 → ③ 용이 먼저 상상을 말해 주고 진행
@@ -303,14 +312,11 @@ export function questionPlan(p: StoryPromptInput): string {
   } else if (isRepeat(p)) {
     parts.push("아이가 같은 말을 또 했다. 그건 아이가 그것을 정말 좋아한다는 뜻이다. 새 인물을 더 만들지 말고, 그것이 이번 단계의 열쇠가 되게 한 뒤 아주 쉬운 두 갈래 질문을 한 문장으로 한다.");
     handled = true;
-  } else if (FEELING.test(text)) {
-    parts.push(`아이가 자기 마음을 말했다. 먼저 한 문장으로 받아 주고(이야기 용이 곁에 있다는 말), 이야기 속 친구도 같은 마음이었다는 식으로 오늘 밤 줄거리와 잇는다. 무서운 것은 작고 귀엽게 바꾼다.`);
-    handled = true;
   }
   // 딴 얘기(배고파·심심해 등)는 새 사건으로 키우지 말고 오늘 밤 줄거리 안에서 받는다
   parts.push(handled ? `그다음 이번 단계를 잇는다: ${beat}` : beat);
   parts.push("아이 말이 오늘 밤 줄거리와 상관없으면(배고파, 심심해 등) 새 사건을 만들지 말고 한 문장으로 받아 준 뒤(가진 것이 있으면 그걸로: 귤을 나눠 먹음 등) 원래 장면으로 돌아온다.");
-  return `[이번 턴 질문] ${parts.join(" ")}`;
+  return `[이번 턴 할 일] ${parts.join(" ")}`;
 }
 
 /** 오늘 밤 줄거리 카드 (system) */
@@ -326,7 +332,7 @@ function nightBlock(n: NightCard | undefined): string {
     `해결 장면: ${n.resolve}`,
     n.reward ? `얻는 것: ${n.reward}` : "",
     `지금 가진 것: ${n.items}`,
-    n.villain.due ? `오늘 밤 방해꾼 ${n.villain.name}이(가) 한 번 나온다 (언제·어떻게는 [이번 턴 질문]이 정한다).` : "",
+    n.villain.due ? `오늘 밤 방해꾼 ${n.villain.name}이(가) 한 번 나온다 (언제·어떻게는 [이번 턴 할 일]이 정한다).` : "",
     "이 카드는 오늘 밤 이야기의 뼈대다. 다른 인물의 말도 모두 이야기 용이 전해 주는 말로 쓴다(\"뒤뚱이가 말해용. '…'\"). 이 뼈대 밖의 새 사건·새 위기를 만들지 않는다.",
   ]
     .filter((x, i) => x !== "" || i < 2)
@@ -347,11 +353,17 @@ function memoryBlock(memory: StoryMemory | null): string {
 
 function turnInstruction(p: StoryPromptInput): string {
   switch (p.mode) {
-    case "ending_sleep":
-      return `아이가 졸리다고 했다. ${p.night && p.turnIndex < WRAP_UP_TURN ? `오늘 밤 곤란이 아직 안 풀렸으면 먼저 한 문장으로 풀어 준다: 아이가 앞에서 한 말(정한 이름·방법·주문) 덕분에 ${p.night.resolve.split(". ")[0]}처럼 되게 하고(아이가 안 지은 이름을 지은 것처럼 쓰지 않는다. 이름이 없으면 ${p.night.hostName}이(가) 대신 불러 준다), ${p.night.reward ? `얻는 것(${p.night.reward.split(" — ")[0]})을 한 번 말한다. ` : ""}` : ""}그다음 새 사건 없이 1~2문장으로 아주 조용하고 포근하게 마무리해라. 모두 3문장 이내. 작별 인사는 따로 붙으니 "잘 자용" 같은 인사는 넣지 않는다. 질문 금지. choices는 []. shouldEnd는 true, endingReason은 "sleep_request".`;
+    case "ending_sleep": {
+      // 해결 턴(WIND_DOWN_TURN)을 지났으면 이미 풀렸으므로 다시 풀지 않는다 (끝난 장면 되풀이 방지)
+      const unresolved = p.night && p.turnIndex <= WIND_DOWN_TURN;
+      const seed = p.seedBeat ? ` [오늘의 마음 담기 — 이 턴에 꼭, 한 문장] ${p.seedBeat}` : "";
+      return `아이가 졸리다고 했다. ${unresolved && p.night ? `오늘 밤 곤란이 아직 안 풀렸으면 먼저 한 문장으로 풀어 준다: 아이가 앞에서 한 말(정한 이름·방법·주문) 덕분에 '${p.night.resolve.split(". ")[0]}'처럼 되게 한다(아이가 안 지은 이름을 지은 것처럼 쓰지 않는다. 이름이 없으면 ${withSubject(p.night.hostName)} 대신 불러 준다). ${p.night.reward ? `얻는 것(${p.night.reward.split(" — ")[0]})을 한 번 말한다. ` : ""}` : ""}그다음 새 사건 없이 1~2문장으로 아주 조용하고 포근하게 마무리해라. 모두 3문장 이내. 작별 인사는 따로 붙으니 "잘 자용" 같은 인사는 넣지 않는다. 질문 금지. choices는 []. shouldEnd는 true.${seed}`;
+    }
     case "ending_timeout":
-    case "ending_natural":
-      return `${p.plotResolve ? `오늘 이야기의 해결 방향: ${p.plotResolve} ` : ""}지금 이야기를 마무리할 시간이다. 아이의 마지막 말을 반영해 2문장의 따뜻한 결말을 써라. 오늘의 별이 아이 덕분에 어떻게 되었는지 한 문장으로 정리해라. 작별 인사는 따로 붙으니 넣지 않는다. 질문 금지. choices는 []. shouldEnd는 true, endingReason은 "natural".`;
+    case "ending_natural": {
+      const seed = p.seedBeat ? ` [오늘의 마음 담기 — 이 턴에 꼭, 한 문장] ${p.seedBeat}` : "";
+      return `${p.plotResolve && p.turnIndex <= WIND_DOWN_TURN ? `오늘 이야기의 해결 방향: ${p.plotResolve} ` : ""}지금 이야기를 마무리할 시간이다. 아이의 마지막 말을 반영해 2문장의 따뜻한 결말을 써라. 오늘의 별이 아이 덕분에 어떻게 되었는지 한 문장으로 정리해라. 작별 인사는 따로 붙으니 넣지 않는다. 질문 금지. choices는 []. shouldEnd는 true.${seed}`;
+    }
     case "safety":
       return `아이가 방금 현실에서 누가 때렸다거나, 다쳤다거나, 사라지고 싶다는 식의 말을 했다. 이야기로 덮고 넘어가지 말고 먼저 1~2문장으로 다정하게 받아 준다: 그런 일이 있었다면 ${p.childName ? `${p.childName} 잘못이` : "네 잘못이"} 아니고, 믿을 수 있는 어른(선생님이나 가까운 어른)에게 꼭 이야기하면 좋겠다고 말한다. 무슨 일이었는지 캐묻지 않는다. 그다음 포근하고 안전한 장면 한 문장으로 이어가고, 쉬운 보기 두 개로 묻는 부담 없는 질문 하나로 끝낸다. 겁주거나 판단하지 않는다.`;
     case "seed":
@@ -361,19 +373,19 @@ function turnInstruction(p: StoryPromptInput): string {
       if (p.turnIndex === 0) {
         parts.push(
           p.memory
-            ? "새 이야기의 첫 장면이다. 아이 이름을 한 번 반갑게 부르고('○○야, 또 만났네용!'), 오늘의 별에 도착해 [이번 턴 질문]대로 시작해라."
-            : "새 이야기의 첫 장면이다. 아이 이름을 한 번 반갑게 부르고, 오늘의 별에 도착해 [이번 턴 질문]대로 (처음 온 별이면 세계관 소개부터) 시작해라."
+            ? "새 이야기의 첫 장면이다. 아이 이름을 한 번 반갑게 부르고('○○야, 또 만났네용!'), 오늘의 별에 도착해 [이번 턴 할 일]대로 시작해라."
+            : "새 이야기의 첫 장면이다. 아이 이름을 한 번 반갑게 부르고, 오늘의 별에 도착해 [이번 턴 할 일]대로 (처음 온 별이면 세계관 소개부터) 시작해라."
         );
       } else if (p.askName) {
         parts.push(
-          `아이가 방금 자기 이름을 말했을 것이다. JSON에 "childName": "이름만"(예: "지우", 모르면 null)을 추가해라. 이름이 있으면 '○○야, 반가워용!'처럼 딱 한 번 반갑게 부르고(이름 끝 글자에 받침이 있으면 '아', 없으면 '야': 지우야, 민준아. 이름을 모르면 '친구야, 반가워용!'), 이어서 [이번 턴 질문]대로 오늘의 별로 들어가라. 사용법이나 대답 연습 같은 이야기는 하지 않는다.`
+          `아이가 방금 자기 이름을 말했을 것이다. JSON에 "childName": "이름만"(예: "지우", 모르면 null)을 추가해라. 이름이 있으면 '○○야, 반가워용!'처럼 딱 한 번 반갑게 부르고(이름 끝 글자에 받침이 있으면 '아', 없으면 '야': 지우야, 민준아. 이름을 모르면 '친구야, 반가워용!'), 이어서 [이번 턴 할 일]대로 오늘의 별로 들어가라. 사용법이나 대답 연습 같은 이야기는 하지 않는다.`
         );
       } else {
         parts.push("아이의 말을 반영해 이야기를 이어가라.");
       }
-      if (p.plotResolve) parts.push(`오늘 이야기의 해결 방향(아이의 선택을 따르며 자연스럽게): ${p.plotResolve}`);
+      if (p.plotResolve && p.phase !== "resolve") parts.push(`오늘 이야기의 해결 방향(아이의 선택을 따르며 자연스럽게): ${p.plotResolve}`);
       parts.push(questionPlan(p));
-      if (p.canSuggestEnd) {
+      if (p.canSuggestEnd && p.phase !== "resolve") {
         parts.push(
           p.turnIndex >= WRAP_UP_TURN
             ? `이제 마무리할 때다. 오늘 밤 목표가 아이 덕분에 풀린 것을 한 문장으로 보여 주고, 질문 없이 따뜻한 결말 2문장으로 끝내라. shouldEnd는 true, endingReason은 "natural", choices는 [].`
@@ -411,17 +423,15 @@ export function buildStoryMessages(p: StoryPromptInput): ChatMessage[] {
     if (t.narration) messages.push({ role: "assistant", content: t.narration });
   }
 
-  const feeling =
-    p.turnIndex > 0 && p.mode !== "safety" && FEELING.test(p.childText)
-      ? " 아이가 무섭다·슬프다·보고 싶다처럼 마음을 말했다. 이야기를 밀어붙이지 말고, 첫 문장에서 그 마음을 다정하게 받아 준다(예: '무서울 땐 내가 꼭 옆에 있을게용.'). 장면을 더 밝고 포근하게 바꾸고(불빛이 켜지거나 친구가 꼭 안아 줌), 그다음 부담 없는 질문 하나를 한다. 현실을 캐묻지 않는다."
-      : "";
   const privacy =
     p.turnIndex > 0 && hasPersonalInfo(p.childText)
       ? " 아이가 주소·전화번호 같은 개인정보를 말했다. '그런 건 우리만의 비밀로 지켜용'처럼 한 문장으로 다정하게 넘기고, 그 내용은 이야기에 넣지 않는다."
       : "";
   messages.push({
     role: "user",
-    content: `[아이의 말] "${p.childText || "(아무 말 없음)"}"\n[이번 턴 지시] ${turnInstruction(p)}${feeling}${privacy}\nnarration은 이야기 2~3문장(아이 말 때문에 일어난 일 + 그래서 새로 생긴 일) + 짧은 질문 하나. 이번 턴에 이야기에서 무언가 실제로 일어나야 한다. JSON으로만 답해.`,
+    content: `[아이의 말] "${p.childText || "(아무 말 없음)"}"\n[이번 턴 지시] ${turnInstruction(p)}${privacy}${
+      p.mode.startsWith("ending") ? "" : " 분량과 질문은 위 [이번 턴 할 일]에 적힌 대로(따로 적혀 있지 않으면 이야기 2~3문장 + 짧은 질문 하나). 아이 말 때문에 같은 자리에서 한 걸음 나아가는 변화가 하나 있어야 한다."
+    } JSON으로만 답해.`,
   });
 
   return messages;
