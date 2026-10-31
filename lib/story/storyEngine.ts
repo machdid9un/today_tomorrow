@@ -4,9 +4,12 @@ import type { EndReason, StoryTurnResult } from "@/types";
 import type { EpisodeContext } from "./contextStore";
 import { chatJSON, hasLlmKey, LlmJsonError, STORY_MODEL } from "./llm";
 import { detectChildName } from "./memorySummarizer";
+import { toYongStyle, withTopic } from "./persona";
 import { buildStoryMessages, CLOSING_LINE, OPENING_GUEST, type TurnMode } from "./prompts";
 import { isSafetyConcern } from "./safety";
-import { resolveSeedDirective } from "./seedPresets";
+import { plotPatternFor } from "./plotPatterns";
+import { resolveSeedDirective, seedSceneHint } from "./seedPresets";
+import { stageDirective, themeFor } from "./themes";
 
 export { isSafetyConcern };
 
@@ -47,14 +50,14 @@ export function isSleepRequest(text: string): boolean {
   return SLEEP_PATTERN.test(text.replace(/\s+/g, " "));
 }
 
-/** TTS 큐용 문장 분할. "치익…" 같은 짧은 감탄도 한 문장으로 취급. */
+/** TTS 큐용 문장 분할. "앗…" 같은 짧은 감탄도 한 문장으로 취급. */
 export function splitSentences(text: string): string[] {
   const normalized = text.replace(/\s+/g, " ").trim();
   const parts = normalized.match(/[^.!?…~。！？]+[.!?…~。！？]*["'”’)]*/g) ?? [normalized];
   return parts.map((s) => s.trim()).filter(Boolean);
 }
 
-const FALLBACK_QUESTION = "대장님은 어떻게 하고 싶어요?";
+const FALLBACK_QUESTION = "너는 어떻게 하고 싶어용?";
 const SENTENCE_END = /[.!?…~。！？]["'”’)]*$/;
 
 /**
@@ -79,7 +82,8 @@ export function trimNarration(
   }
   if (maxSentences >= 4 && parts.length > maxSentences) {
     // 안전 응답: 앞의 위로·어른에게 말하기 문장을 지키고, 마지막 장면+질문을 남긴다
-    parts = [...parts.slice(0, 2), ...parts.slice(-2)];
+    const adult = parts.findIndex((x, i) => i >= 2 && i < parts.length - 2 && /(어른|선생님)/.test(x));
+    parts = adult >= 0 ? [parts[0], parts[adult], ...parts.slice(-2)] : [...parts.slice(0, 2), ...parts.slice(-2)];
   } else if (maxSentences < 4 && parts.length > 3) {
     const last = parts[parts.length - 1];
     // 마지막 질문이 바로 앞 문장을 가리키는 경우가 많아(예: "그건 무엇일까요?") 첫 문장 + 마지막 두 문장을 남긴다
@@ -141,17 +145,17 @@ function endingReasonFor(mode: TurnMode): EndReason | null {
 /** 키가 없을 때(로컬 개발) 쓰는 가짜 턴. 계약 형태는 실제와 동일. */
 function mockTurn(mode: TurnMode, turnIndex: number): RawTurn {
   if (mode.startsWith("ending")) {
-    return { narration: "노란 용은 대장님 덕분에 다시 하늘을 날 수 있게 됐어요.", choices: [] };
+    return { narration: "색깔 친구는 친구 덕분에 다시 반짝일 수 있게 됐어용.", choices: [] };
   }
   if (mode === "seed") {
     return {
-      narration: "용이 날개를 다쳐서 천천히 걸어요. 그런데 저 멀리 로켓이 떠나려고 해요. 용 옆에 남을까요, 아니면 로켓을 탈까요?",
-      choices: ["용 옆에 남기", "로켓 타기"],
+      narration: "까꿍, 빨강 친구가 어딘가에 숨었어용. 사과 나무 뒤일까용, 아니면 노을 언덕일까용?",
+      choices: ["사과 나무", "노을 언덕"],
     };
   }
   return {
-    narration: `(${turnIndex}턴) 무전기에서 지직 소리가 났어요. 저 멀리 노란 용이 손을 흔들고 있어요. 용한테 뭐라고 말해 볼까요?`,
-    choices: ["인사하기", "숨어서 보기"],
+    narration: `(${turnIndex}턴) 사르륵, 흐릿한 빛이 깜빡여용. 저 멀리 무지개 새가 날개를 흔들고 있어용. 무지개 새한테 뭐라고 말해 볼까용?`,
+    choices: ["안녕 할래", "숨어서 볼래"],
     childName: turnIndex === 1 ? "지우" : null,
   };
 }
@@ -165,9 +169,20 @@ export async function generateTurn(input: GenerateTurnInput): Promise<GeneratedT
     return { narration: OPENING_GUEST, choices: [], shouldEnd: false, endingReason: null, childName: null };
   }
 
-  // 2) 모드 결정 (코드가 판정)
-  let mode = decideMode(input, Boolean(ctx.seedPreset));
-  const seedDirective = mode === "seed" ? await resolveSeedDirective(ctx.seedPreset, ctx.seedText) : null;
+  // 2) 모드 결정 (코드가 판정).
+  // 갈림길 장면 = 오늘의 별 시즌 단계(예: 숨은 무지개의 오늘 찾을 색). 부모 씨앗이 있으면 그 '마음 주제'를 이 별 장면에 녹인다.
+  // 시즌을 다 끝낸 별이면 회차별 고전 동화 뼈대를 이 별에 맞게 쓴다.
+  const theme = themeFor(ctx.episodeId, ctx.themeId);
+  const planetProgress = ctx.planets[theme.id] ?? null;
+  const arc = stageDirective(theme, planetProgress, plotPatternFor(ctx.episodeId));
+  // 부모가 고른 '마음 담기'(용의 태도)는 회차 내내 깔리고, 갈림길 장면에는 한 줄 힌트로 얹힌다
+  const seedTone = ctx.seedPreset ? await resolveSeedDirective(ctx.seedPreset, ctx.seedText) : null;
+  let mode = decideMode(input, true);
+  let seedDirective: string | null = null;
+  if (mode === "seed") {
+    const hint = seedSceneHint(ctx.seedPreset);
+    seedDirective = hint ? `${arc.directive}\n오늘의 마음 담기: ${hint}` : arc.directive;
+  }
   if (mode === "seed" && !seedDirective) mode = "normal";
   const canSuggestEnd =
     !input.short && mode === "normal" && turnIndex >= MIN_TURNS_FOR_NATURAL_END;
@@ -193,8 +208,15 @@ export async function generateTurn(input: GenerateTurnInput): Promise<GeneratedT
           seedDirective,
           askName,
           short: input.short,
-          afterSeed: Boolean(ctx.seedPreset) && turnIndex === (input.short ? SHORT_SEED_TURN : SEED_TURN) + 1,
+          afterSeed: turnIndex === (input.short ? SHORT_SEED_TURN : SEED_TURN) + 1,
           episodeKey: ctx.episodeId,
+          // 갈림길 다음 턴부터: 오늘의 별 시즌 단계의 해결 방향 (부모 씨앗이 있어도 오늘의 목표는 풀리게)
+          plotResolve: turnIndex > (input.short ? SHORT_SEED_TURN : SEED_TURN) ? arc.resolve : undefined,
+          themeId: theme.id,
+          planetProgress,
+          arcGoal: arc.goal,
+          seedTone,
+          restMode: ctx.seedPreset === "rest",
         }),
         maxTokens: 600,
         temperature: 0.8,
@@ -225,11 +247,29 @@ export async function generateTurn(input: GenerateTurnInput): Promise<GeneratedT
       ? trimNarration(
           raw.narration.trim(),
           shouldEnd,
-          askName ? "누가 신호를 보냈을까요?" : FALLBACK_QUESTION,
-          mode === "safety" ? 4 : 3 // 안전 응답은 '어른에게 말하기' 문장이 잘리지 않게 4문장까지
+          askName
+            ? "누가 도와 달라고 했을까용?"
+            : /이름/.test(raw.narration) // 이름 짓기 턴인데 질문이 빠진 경우
+              ? "이 친구 이름을 뭐라고 지어 줄까용?"
+              : `${withTopic(ctx.childName)} 어떻게 하고 싶어용?`,
+          // 안전 응답('어른에게 말하기')과 갈림길 장면(받아 주기 + 장면 설명 + 질문)은 잘리지 않게 4문장까지
+          mode === "safety" || mode === "seed" ? 4 : 3
         )
       : "";
   if (!narration) throw new Error("EMPTY_NARRATION");
+  // 위험 신호 응답에는 '네 잘못이 아니야'와 '믿을 수 있는 어른에게 말하기'가 꼭 들어가야 한다 (빠지면 코드가 넣는다)
+  if (mode === "safety") {
+    const parts = splitSentences(narration);
+    const missing: string[] = [];
+    if (!/잘못이\s*아니/.test(narration)) missing.push(`그건 ${ctx.childName ? `${ctx.childName} ` : "네 "}잘못이 아니에용.`);
+    if (!/(어른|선생님)/.test(narration)) missing.push("선생님이나 가까운 어른에게 꼭 이야기해 줘용.");
+    if (missing.length) {
+      parts.splice(Math.min(1, parts.length), 0, ...missing);
+      narration = parts.join(" ");
+    }
+  }
+  // 이야기 용 말투: 문장 끝 '요' → '용' (모델이 빠뜨려도 코드가 맞춘다. 다른 인물의 따옴표 대사는 그대로)
+  narration = toYongStyle(narration);
 
   let choices = Array.isArray(raw.choices)
     ? raw.choices

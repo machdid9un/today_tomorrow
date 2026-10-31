@@ -23,10 +23,10 @@ const CHOICE = /(아니면|이나\s|거나\s|(까요|래요|할래요|갈래요|
 const PRAISE = /(잘했어|잘했어요|멋져|멋지다|멋져요|멋있어|대단해|대단하|최고야|최고예요|훌륭|착하)/;
 // 아이의 현실을 묻는 질문 (이야기 속 '엄마 거북이', '탐험대 학교'는 제외)
 const REAL_LIFE_Q =
-  /(대장님(?:의|은|도|네)?\s*(?:학교|유치원|어린이집|학원|선생님|엄마|아빠|집|가족|친구)|오늘\s*(?:유치원|학교)|(?:낮에|오늘)\s*뭐\s*했|진짜로\s*있었|실제로)/;
+  /((?:대장님|너|네)(?:의|은|도|네)?\s*(?:학교|유치원|어린이집|학원|선생님|엄마|아빠|집|가족|친구)|오늘\s*(?:유치원|학교)|(?:낮에|오늘)\s*뭐\s*했|진짜로\s*있었|실제로)/;
 const DONT_KNOW = /(몰라|모르겠|모르겟|글쎄|몰루)/;
 const AI_ASK = /(AI|에이아이|로봇|진짜\s*사람|사람이야|사람 아니)/i;
-const FALLBACK_Q = "대장님은 어떻게 하고 싶어요?";
+const FALLBACK_Q_RE = /어떻게 하고 싶어[요용]\?/;
 
 /** 따옴표 안 대사를 지운 서술 부분 */
 function narrativePart(sentence: string): string {
@@ -45,7 +45,7 @@ export type Register = "polite" | "banmal" | "other";
 export function sentenceRegister(sentence: string): Register {
   const core = narrativePart(sentence).replace(/[.!?…~。！？,"'”’)\s]+$/g, "");
   if (!core) return "other";
-  if (/(요|니다|죠)$/.test(core)) return "polite";
+  if (/(요|용|니다|죠)$/.test(core)) return "polite"; // 이야기 용 말투 '~용'은 해요체로 본다
   const hangul = core.replace(/[^가-힣]/g, "");
   if (hangul.length < 4) return "other";
   if (/(어|아|야|지|해|래|자|니|냐|다|게|걸|네|까|군|구나|거든|는데|고)$/.test(core)) return "banmal";
@@ -144,7 +144,7 @@ export function computeTurnMetrics(turns: EvalTurn[], childName: string | null):
     consecutive = type === "yesno" ? consecutive + 1 : 0;
     maxConsecutive = Math.max(maxConsecutive, consecutive);
     if (questionBlock(t.narration).extraQuestions > 0) multi++;
-    if (t.narration.includes(FALLBACK_Q)) fallback++;
+    if (FALLBACK_Q_RE.test(t.narration)) fallback++;
   }
 
   let sentenceCount = 0;
@@ -253,7 +253,7 @@ export interface StorybookMetrics {
 export function computeStorybookMetrics(
   storybook: string,
   turns: EvalTurn[],
-  opts: { mustNotContain?: string[]; mustContain?: string[]; memoryText?: string }
+  opts: { mustNotContain?: string[]; mustContain?: string[]; memoryText?: string; childName?: string | null }
 ): StorybookMetrics {
   const paras = storybook.split(/\n\s*\n/).map((p) => p.trim()).filter(Boolean);
   const sentences = splitSentences(storybook);
@@ -315,10 +315,11 @@ export function computeStorybookMetrics(
     childReflectedRate: candidates.length ? rate(reflected, candidates.length) : null,
     fabricatedChildQuotes: dropFabricatedChildQuotes(
       storybook,
-      turns.filter((t) => t.mode !== "name").map((t) => t.childText)
+      turns.filter((t) => t.mode !== "name").map((t) => t.childText),
+      [opts.childName ?? "친구", "친구", "대장님"]
     ).dropped.length,
     endsWithQuestion: /\?["'”’)]*$/.test(lastSentence),
-    closingLineLeak: storybook.includes("오늘 무전은 여기까지"),
+    closingLineLeak: /오늘\s*(?:무전은|이야기는)\s*여기까지/.test(storybook),
     nameQaLeak: Boolean(nameTurn && /이름이\s*뭐/.test(storybook)) || storybook.includes(OPENING_GUEST),
     mustNotViolations: (opts.mustNotContain ?? []).filter((s) => haystack.includes(s)),
     mustContainMissing: (opts.mustContain ?? []).filter((s) => !storybook.includes(s)),

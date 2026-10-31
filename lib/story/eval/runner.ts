@@ -7,6 +7,8 @@ import { summarizeEpisode, type SummarizeEpisodeResult } from "../memorySummariz
 import { generateTurn, isSafetyConcern } from "../storyEngine";
 import { simulateChild } from "./childSim";
 import { judgeEpisode, JUDGE_KEYS, type JudgeKey, type JudgeResult } from "./judge";
+import { plotPatternFor } from "../plotPatterns";
+import { advancePlanet, stageDirective, themeFor, type PlanetProgress } from "../themes";
 import {
   computeStorybookMetrics,
   computeTurnMetrics,
@@ -14,9 +16,11 @@ import {
   type StorybookMetrics,
   type TurnMetrics,
 } from "./metrics";
-import { EVAL_SCENARIOS, type EvalScenario } from "./scenarios";
+import { EVAL_SCENARIOS, scenarioPlanet, type EvalScenario } from "./scenarios";
 
 export interface ScenarioResult {
+  /** 오늘의 별·목표와 시즌 진행 전후 */
+  planet?: { id: string; goal: string; before: PlanetProgress | null; after: PlanetProgress | null };
   id: string;
   title: string;
   age: number;
@@ -111,6 +115,9 @@ async function pool<T>(items: T[], concurrency: number, fn: (item: T) => Promise
 async function runTurns(sc: EvalScenario): Promise<{ turns: EvalTurn[]; history: TurnRecord[]; childName: string | null }> {
   const ctx = await loadEpisodeContext(`mock-eval${tag(8)}-1`);
   ctx.seedPreset = sc.seed;
+  const setup = scenarioPlanet(sc);
+  ctx.themeId = setup.themeId;
+  ctx.planets = setup.progress ? { [setup.themeId]: setup.progress } : {};
   ctx.childAge = sc.age;
   const turns: EvalTurn[] = [];
   const seedTurn = sc.short ? 2 : 3;
@@ -136,7 +143,7 @@ async function runTurns(sc: EvalScenario): Promise<{ turns: EvalTurn[]; history:
           ? "name"
           : isSafetyConcern(childText)
             ? "safety"
-            : sc.seed && turnIndex === seedTurn
+            : turnIndex === seedTurn // 부모 씨앗이 없으면 고전 동화 뼈대가 갈림길 장면이 된다
               ? "seed"
               : "normal";
 
@@ -196,8 +203,24 @@ async function storyAndScore(
   const s0 = Date.now();
   let summary: ScenarioResult["summary"] = null;
   let summaryError: string | undefined;
+  const setup = scenarioPlanet(sc);
+  const theme = themeFor(sc.id, setup.themeId);
+  const arc = stageDirective(theme, setup.progress, plotPatternFor(sc.id));
+  const planetText = planetDescription(sc);
+  let planetAfter: PlanetProgress | null = null;
   try {
-    const out = await summarizeEpisode({ turns: history, prevMemory: null, childName, episodeNumber: 1 });
+    const out = await summarizeEpisode({
+      turns: history,
+      prevMemory: null,
+      childName,
+      episodeNumber: 1,
+      planet: { theme, progress: setup.progress, goal: arc.goal, stageId: arc.stageId },
+    });
+    planetAfter = advancePlanet(theme, setup.progress, {
+      reached: history.length >= (sc.short ? 4 : 5),
+      foundColor: out.planetUpdate?.found ?? null,
+      collected: out.planetUpdate?.made ?? [],
+    });
     summary = {
       storybookText: out.storybookText,
       islandTitle: out.islandTitle,
@@ -214,11 +237,12 @@ async function storyAndScore(
         mustNotContain: sc.mustNotContain,
         mustContain: sc.mustContain,
         memoryText: JSON.stringify(summary.worldMemory),
+        childName,
       })
     : null;
 
   const judged = judge
-    ? await judgeEpisode({ age: sc.age, title: sc.title, turns, storybook: summary?.storybookText ?? "" })
+    ? await judgeEpisode({ age: sc.age, title: sc.title, turns, storybook: summary?.storybookText ?? "", planet: planetText })
     : null;
 
   return {
@@ -235,7 +259,16 @@ async function storyAndScore(
     turnMetrics: computeTurnMetrics(turns, childName),
     storyMetrics,
     judge: judged,
+    planet: { id: theme.id, goal: arc.goal, before: setup.progress, after: planetAfter },
   };
+}
+
+/** 심사위원에게 줄 오늘의 별 설명 */
+function planetDescription(sc: EvalScenario): string {
+  const setup = scenarioPlanet(sc);
+  const theme = themeFor(sc.id, setup.themeId);
+  const arc = stageDirective(theme, setup.progress, plotPatternFor(sc.id));
+  return `${theme.planet} — 놀이: ${theme.play}. 오늘 밤 목표: ${arc.goal}.`;
 }
 
 function selectScenarios(only: string[] | null): EvalScenario[] {
@@ -345,9 +378,16 @@ export async function startRejudge(id: string, concurrency: number): Promise<Eva
           mustNotContain: sc?.mustNotContain,
           mustContain: sc?.mustContain,
           memoryText: JSON.stringify(r.summary.worldMemory),
+          childName: r.childName,
         });
       }
-      r.judge = await judgeEpisode({ age: r.age, title: r.title, turns: r.turns, storybook: r.summary?.storybookText ?? "" });
+      r.judge = await judgeEpisode({
+        age: r.age,
+        title: r.title,
+        turns: r.turns,
+        storybook: r.summary?.storybookText ?? "",
+        planet: sc ? planetDescription(sc) : undefined,
+      });
       job.done++;
       void persist(job);
     });

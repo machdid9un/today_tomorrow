@@ -4,7 +4,7 @@
 //
 // 쿼리(모두 선택):
 //   lines=지우야|용한테 가볼래|...   아이 발화 목록 ("|" 구분, turnIndex 1부터 차례로)
-//   seed=friend|school|sibling|fear|new_place|none   씨앗 프리셋 (기본 friend)
+//   seed=courage|praise|company|rest|none   마음 담기 (기본 company)
 //   short=1   심사용 짧은 회차(3턴)
 //   ep2=0     2화 첫 턴 생략
 //   extra={"..."}  (개발 서버 전용 실험) LLM 요청 본문에 덧붙일 JSON. 예: 추론 끄기 옵션 시험
@@ -19,7 +19,7 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
 const DEFAULT_LINES = ["지우야", "용한테 가볼래", "용이 아파 보여", "용 옆에 남을래", "나 이제 졸려"];
-const SEEDS: (SeedPreset | "none")[] = ["friend", "school", "sibling", "fear", "new_place", "none"];
+const SEEDS: (SeedPreset | "none")[] = ["courage", "praise", "company", "rest", "none"];
 
 function randomTag(): string {
   const letters = "abcdefghijklmnopqrstuvwxyz";
@@ -39,8 +39,8 @@ export async function GET(request: Request) {
     .filter(Boolean)
     .slice(0, 15);
   const childLines = lines.length ? lines : DEFAULT_LINES;
-  const seedParam = url.searchParams.get("seed") ?? "friend";
-  const seed = (SEEDS as string[]).includes(seedParam) ? (seedParam as SeedPreset | "none") : "friend";
+  const seedParam = url.searchParams.get("seed") ?? "company";
+  const seed = (SEEDS as string[]).includes(seedParam) ? (seedParam as SeedPreset | "none") : "company";
   const short = url.searchParams.get("short") === "1";
   const runEp2 = url.searchParams.get("ep2") !== "0";
 

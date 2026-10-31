@@ -3,6 +3,7 @@
 // - 그 외(로컬 테스트, 역할 1 API 미완성)에는 서버 메모리에 임시 저장
 import { getSupabaseServerClient } from "@/lib/db/supabaseServer";
 import type { SeedPreset, StoryMemory } from "@/types";
+import { isThemeId, readActivePlanet, readPlanets, type PlanetId, type PlanetMemory } from "./themes";
 
 export interface TurnRecord {
   childText: string;
@@ -21,6 +22,12 @@ export interface EpisodeContext {
   seedPreset: SeedPreset | null;
   seedText: string | null;
   history: TurnRecord[];
+  /** 오늘의 별. 아이가 지도에서 고른 별(턴 요청의 themeId) → 회차 동안 memory_json.activePlanet에 기억. 없으면 null(episodeId로 고정 선택) */
+  themeId: PlanetId | null;
+  /** 행성별 시즌 진행 (memory_json.planets) */
+  planets: PlanetMemory;
+  /** DB의 memory_json 원본 (activePlanet만 바꿔 쓸 때 다른 칸을 지키려고) */
+  rawMemoryJson: Record<string, unknown> | null;
 }
 
 export interface SaveTurnInput {
@@ -32,11 +39,12 @@ export interface SaveTurnInput {
   childName: string | null;
 }
 
-const SEED_PRESETS: SeedPreset[] = ["friend", "school", "sibling", "fear", "new_place", "custom"];
+const SEED_PRESETS: SeedPreset[] = ["courage", "praise", "company", "rest", "custom"];
 
 type MemoryStore = Map<string, EpisodeContext>;
 interface MockWorld {
   memory: StoryMemory | null;
+  planets: PlanetMemory;
   childName: string | null;
   episodeCount: number;
 }
@@ -103,9 +111,12 @@ export async function loadEpisodeContext(episodeId: string): Promise<EpisodeCont
       childName: world?.childName ?? null,
       childAge: null,
       memory: world?.memory ?? null,
-      seedPreset: "friend", // 로컬 테스트용: 씨앗 장면이 나오는지 확인
+      seedPreset: "company", // 로컬 테스트용: 마음 담기가 이야기에 나오는지 확인
       seedText: null,
       history: [],
+      themeId: null,
+      planets: world?.planets ?? {},
+      rawMemoryJson: null,
     };
     memoryStore.set(episodeId, created);
     return created;
@@ -147,7 +158,31 @@ export async function loadEpisodeContext(episodeId: string): Promise<EpisodeCont
       childText: t.child_text ?? "",
       narration: t.narration ?? "",
     })),
+    themeId: readActivePlanet(world?.memory_json),
+    planets: readPlanets(world?.memory_json),
+    rawMemoryJson:
+      world?.memory_json && typeof world.memory_json === "object" ? (world.memory_json as Record<string, unknown>) : null,
   };
+}
+
+/**
+ * 턴 요청에 온 themeId(아이가 지도에서 고른 별)를 회차 맥락에 반영.
+ * DB 모드에서는 회차 종료(finalize) 때도 알 수 있게 worlds.memory_json.activePlanet에 적어 둔다(바뀔 때만).
+ * complete가 memory_json을 summary.worldMemory로 덮어쓰면 activePlanet은 지워진다(다음 회차는 다시 고름).
+ */
+export async function applyThemeId(ctx: EpisodeContext, themeId: unknown): Promise<void> {
+  if (!isThemeId(themeId) || ctx.themeId === themeId) return;
+  ctx.themeId = themeId;
+  if (ctx.source !== "db" || !ctx.worldId) return;
+  try {
+    const sb = getSupabaseServerClient();
+    const next = { ...(ctx.rawMemoryJson ?? {}), activePlanet: themeId };
+    const { error } = await sb.from("worlds").update({ memory_json: next }).eq("id", ctx.worldId);
+    if (error) console.error("[story] activePlanet save failed", error);
+    else ctx.rawMemoryJson = next;
+  } catch (err) {
+    console.error("[story] activePlanet save failed", err);
+  }
 }
 
 /**
@@ -156,13 +191,14 @@ export async function loadEpisodeContext(episodeId: string): Promise<EpisodeCont
  */
 export function saveMockWorld(
   ctx: EpisodeContext,
-  result: { worldMemory: StoryMemory; childName: string | null }
+  result: { worldMemory: StoryMemory & { planets?: PlanetMemory }; childName: string | null }
 ): void {
   if (ctx.source !== "memory") return;
   const key = mockWorldKey(ctx.episodeId);
   const prev = mockWorlds.get(key);
   mockWorlds.set(key, {
     memory: result.worldMemory,
+    planets: result.worldMemory.planets ?? prev?.planets ?? {},
     childName: result.childName ?? ctx.childName ?? prev?.childName ?? null,
     episodeCount: Math.max(prev?.episodeCount ?? 0, ctx.episodeNumber),
   });
