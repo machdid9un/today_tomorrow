@@ -28,7 +28,25 @@ export default function AdventureStage(props: AdventureStageProps) {
 }
 
 function Stage({ episodeId, mode, themeId, onReset }: AdventureStageProps & { onReset: () => void }) {
-  const { phase, errorMessage, choices, narrationLog, start, startRecording, stopRecording, submitChoice, endManually } = useVoiceAdventure({ episodeId, mode, themeId: themeId ?? undefined });
+  const { phase, errorMessage, choices, narrationLog, start, startRecording, stopRecording, submitChoice, submitText, micAvailable, endManually } = useVoiceAdventure({ episodeId, mode, themeId: themeId ?? undefined });
+  const [typed, setTyped] = useState("");
+  // 마이크가 없거나, (마이크가 있어도) 못 알아들었는데 고를 버튼이 없을 때 글로 대답할 수 있게
+  const canType = (!micAvailable && (phase === "listening" || phase === "error")) || (phase === "error" && choices.length === 0);
+  const [stopArmed, setStopArmed] = useState(false);
+  const onStopClick = () => {
+    if (stopArmed) {
+      endManually();
+      return;
+    }
+    setStopArmed(true);
+    setTimeout(() => setStopArmed(false), 3000);
+  };
+  const sendTyped = () => {
+    const v = typed.trim();
+    if (!v) return;
+    setTyped("");
+    void submitText(v);
+  };
   const planet = PLANETS.find((p) => p.id === themeId) ?? null;
   const autoStarted = useRef(false);
   const isMock = episodeId.startsWith("mock-");
@@ -110,13 +128,35 @@ function Stage({ episodeId, mode, themeId, onReset }: AdventureStageProps & { on
           </div>
         )}
 
+        {canType && (
+          <form
+            className={styles.typeRow}
+            onSubmit={(e) => {
+              e.preventDefault();
+              sendTyped();
+            }}
+          >
+            <input
+              className={styles.dialogInput}
+              value={typed}
+              onChange={(e) => setTyped(e.target.value)}
+              placeholder={choices.length ? "다른 대답을 적어도 돼요" : "여기에 대답을 적어 줘요 (예: 지우)"}
+              aria-label="글로 대답하기"
+              autoFocus
+            />
+            <button type="submit" className={styles.choice} disabled={!typed.trim()}>
+              보내기
+            </button>
+          </form>
+        )}
+
         {phase !== "idle" && (
-          <button type="button" className={styles.stopBtn} onClick={endManually}>
-            오늘은 그만할래
+          <button type="button" className={styles.stopBtn} onClick={onStopClick} aria-live="polite">
+            {stopArmed ? "한 번 더 누르면 오늘 이야기가 끝나요" : "오늘은 그만할래"}
           </button>
         )}
 
-        {isMock && (
+        {isMock && typeof window !== "undefined" && new URLSearchParams(window.location.search).get("debug") === "1" && (
           <p className={styles.devLine}>
             연습용 회차 {episodeId} ·{" "}
             <button type="button" onClick={() => window.confirm("지금까지의 대화를 지우고 처음부터 할까요?") && onReset()}>

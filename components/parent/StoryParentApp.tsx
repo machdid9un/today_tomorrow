@@ -265,7 +265,24 @@ export default function StoryParentApp({ seedCopy, initialTab = "report", initia
     </section>
   );
 
+  // 건네주기 직후: 방금 끝난 회차(initialEpisodeId)의 관찰 노트가 아직 만들어지는 중(10~35초)이면 그 사실을 보여 준다
+  const [pendingExpired, setPendingExpired] = useState(false);
+  useEffect(() => {
+    if (!initialEpisodeId) return;
+    const t = setTimeout(() => setPendingExpired(true), 90_000); // 90초가 지나도 안 오면 평소 화면으로
+    return () => clearTimeout(t);
+  }, [initialEpisodeId]);
+  const pendingToday =
+    !pendingExpired && Boolean(initialEpisodeId && !initialEpisodeId.startsWith("mock") && !episodes.some((e) => e.id === initialEpisodeId && e.report));
   const nightView = () => {
+    if (pendingToday) {
+      return (
+        <section className={s.card} aria-live="polite">
+          <h2>오늘 이야기로 관찰 노트를 만드는 중이에요</h2>
+          <p className={s.sub}>30초쯤 걸려요. 다 되면 여기에 바로 나타나요. 그동안 아이에게 "잘 잤어?" 한마디 어때요?</p>
+        </section>
+      );
+    }
     if (!night) return <p className={s.empty}>아직 끝난 이야기가 없어요. 첫 이야기를 마치면 여기에 관찰 노트가 생겨요.</p>;
     const r = night.report;
     const info = nightOf(night.startedAt);
