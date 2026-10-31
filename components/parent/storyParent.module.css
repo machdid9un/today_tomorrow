@@ -82,6 +82,12 @@ button.ev:hover { background: #e7e1f8 !important; }
 .line { background: var(--p-signal-soft); border-color: #ffd9b8; }
 .line h2 { color: #a8470b; }
 .line blockquote { margin: 6px 0 16px; font-family: var(--font-display); font-size: 21px; line-height: 1.5; color: var(--p-ink); }
+/* 어제 담은 마음이 어떻게 전해졌나 */
+.echo { background: var(--p-lav); border-color: #e2daf4; }
+.echo h2 { color: var(--p-purple); }
+.echoNote { font-size: 14px; line-height: 1.65; color: var(--p-ink); margin: 4px 0 10px !important; }
+.echoQuote { margin: 0 0 8px; padding: 10px 14px; border-radius: 14px; background: #fff; font-size: 14px; line-height: 1.55; color: var(--p-ink); }
+.echoChild { background: var(--p-warm-2); }
 .btnSignal { display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; min-height: 52px; border-radius: 16px; background: var(--p-signal) !important; color: var(--p-navy) !important; font-weight: 700; font-size: 15px; }
 .btnSignal:hover { filter: brightness(1.05); }
 .next { display: flex; gap: 12px; align-items: center; }

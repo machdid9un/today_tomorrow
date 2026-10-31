@@ -2,7 +2,7 @@
 // 순수 함수: DB를 직접 읽거나 쓰지 않는다. 호출자(/api/episodes/[id]/complete)가 턴·지난 기억을 넘기고,
 // 결과를 worlds.memory_json / worlds.child_name / episodes.storybook_text / island_title / title 에 저장한다.
 // LLM 호출은 회차당 1번(REPORT_MODEL). 키가 없으면 결정적 mock, 아이 발화가 0개면 LLM 없이 기본 결과.
-import type { StoryMemory } from "@/types";
+import type { SeedPreset, StoryMemory } from "@/types";
 import type { TurnRecord } from "./contextStore";
 import { chatJSON, hasLlmKey, REPORT_MODEL, type ChatMessage } from "./llm";
 import { withSubject } from "./persona";
@@ -18,7 +18,17 @@ export interface SummarizeEpisodeInput {
   episodeNumber: number;
   /** 오늘의 별과 시즌 진행 (없으면 별 정보 없이 정리) */
   planet?: { theme: StoryTheme; progress: PlanetProgress | null; goal: string; stageId: string; night?: PlanetNight | null } | null;
+  /** 이번 회차에 쓴 마음 담기 (동화책 마무리에 드러나게; 없으면 null) */
+  seedPreset?: SeedPreset | null;
 }
+
+/** 동화책 마무리 문단에 오늘의 마음 담기가 드러나게 하는 지시 (아이가 실제로 한 일에 근거해서만) */
+const SEED_STORYBOOK_LINES: Partial<Record<string, string>> = {
+  courage: "오늘의 마음 담기는 '용기'다. ⑤ 또는 ⑥ 문단에 아이가 두근거렸지만 한 발 내민 장면을 꼭 넣고, 이야기 용의 대사 한 줄로 짚어 준다(예: “두근거렸는데도 해냈지용.”). 단, 아이가 실제로 하지 않은 용감한 행동을 지어내지 않는다.",
+  praise: "오늘의 마음 담기는 '아이가 만든 변화 알아봐 주기'다. ⑤ 문단에 아이의 말·생각 덕분에 달라진 것을 '덕분에' 문장으로 꼭 쓰고, 이야기 용이 그것을 고마워하는 대사 한 줄을 넣는다(평가 말 없이).",
+  company: "오늘의 마음 담기는 '곁에 있어 주기'다. 이야기 용이 처음부터 끝까지 아이 곁에 있었다는 것이 보이게 쓰고, ⑥ 문단은 이야기 용이 아이 곁에 나란히 누워 함께 잠드는 장면으로 끝낸다.",
+  rest: "오늘의 마음 담기는 '편히 쉬어가기'다. 사건은 작게, 문장은 더 짧고 느리게. 뒷부분 문단은 숨소리·별 세기 같은 느린 장면으로 채운다.",
+};
 
 /** 오늘 이 별에서 생긴 일 (시즌 진행 계산용) */
 export interface PlanetUpdate {
@@ -608,14 +618,17 @@ function buildMessages(
   callName: string,
   episodeNumber: number,
   skipNameQA: boolean,
-  planet: SummarizeEpisodeInput["planet"] = null
+  planet: SummarizeEpisodeInput["planet"] = null,
+  seedPreset: SeedPreset | null = null
 ): ChatMessage[] {
   const memoryText = isEmptyMemory(prev) ? "없음 (첫 모험)" : JSON.stringify(prev, null, 2);
+  const seedLine = seedPreset ? SEED_STORYBOOK_LINES[seedPreset] : undefined;
   const user = [
     `[아이 이름] ${callName}`,
     `[회차] ${episodeNumber}번째 모험`,
     "",
     ...planetBlock(planet),
+    ...(seedLine ? [`[오늘의 마음 담기] ${seedLine}`, ""] : []),
     "[지난 모험의 기억]",
     memoryText,
     "",
@@ -684,7 +697,7 @@ export async function summarizeEpisode(input: SummarizeEpisodeInput): Promise<Su
   // 3) LLM 1회 호출. 네트워크·HTTP·JSON 파싱 실패는 그대로 throw.
   const raw = await chatJSON<unknown>({
     model: REPORT_MODEL,
-    messages: buildMessages(turns, prev, callName, episodeNumber, nameAsked, input.planet ?? null),
+    messages: buildMessages(turns, prev, callName, episodeNumber, nameAsked, input.planet ?? null, input.seedPreset ?? null),
     maxTokens: 5000,
     temperature: 0.6,
     timeoutMs: 30000,

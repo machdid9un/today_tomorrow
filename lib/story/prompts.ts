@@ -112,6 +112,8 @@ export interface StoryPromptInput {
   phase?: Phase;
   /** 부모가 고른 '마음 담기' — 회차 내내 이야기 용의 태도 */
   seedTone?: string | null;
+  /** 이 턴에 반드시 넣을 마음 담기 장면 (seedPresets.seedBeatFor; 코드가 턴별로 정함) */
+  seedBeat?: string | null;
   /** 편히 쉬어가기: 더 일찍 잠자리 쪽으로 */
   restMode?: boolean;
 }
@@ -252,6 +254,7 @@ export function questionPlan(p: StoryPromptInput): string {
   const young = p.childAge === null || p.childAge <= 5; // 나이를 모르면 어린 쪽에 맞춘다
   const parts: string[] = [];
   let beat = beatLine(p, young);
+  if (p.seedBeat) beat += ` [오늘의 마음 담기 — 이 턴에 꼭] ${p.seedBeat}`;
   // 같은 모양의 고르기 질문('A할까용, 아니면 B할까용?')이 두 턴 연속이면 이번엔 단서 + 열린 질문으로 바꾼다
   const lastTwo = p.history.slice(-2).map((t) => t.narration);
   if (lastTwo.length === 2 && lastTwo.every((n) => /아니면/.test(n)) && !["choose", "hook", "twist", "wrap"].includes(p.phase ?? "")) {
@@ -396,7 +399,7 @@ export function buildStoryMessages(p: StoryPromptInput): ChatMessage[] {
     {
       role: "system",
       content: `${profile}${memoryBlock(p.memory)}\n\n${themeContext(themeFor(p.episodeKey, p.themeId), p.planetProgress)}${nightBlock(p.night)}${
-        p.seedTone ? `\n\n[오늘의 마음 담기] (부모가 고른 용의 태도. 아이에게 말하거나 시키지 않고, 이야기 속 용의 말과 행동으로만 자연스럽게) ${p.seedTone}` : ""
+        p.seedTone ? `\n\n[오늘의 마음 담기] (부모가 고른 용의 태도. 아이에게 현실을 묻거나 무엇을 시키지 않고, 이야기 속 용의 말과 행동으로만. 단, 회차가 끝났을 때 이 마음이 분명히 느껴져야 한다: 턴 지시에 '[오늘의 마음 담기 — 이 턴에 꼭]'이 붙으면 그 말·장면을 빠뜨리지 않는다) ${p.seedTone}` : ""
       }`,
     },
   ];
