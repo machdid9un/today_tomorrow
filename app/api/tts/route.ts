@@ -59,12 +59,13 @@ export async function POST(request: Request) {
         body: JSON.stringify({
           text,
           model_id: "eleven_multilingual_v2",
-          // 잠자리 동화 톤: 안정적이고(stability↑) 느린 속도. README §4 "짧고 작게" 취지에 맞춤.
+          // "신나는 어린 용" 톤: 안정성↓(변화폭 넓게, 단조롭지 않게), 스타일↑(과장된 표현),
+          // 속도↑(활기차게). ElevenLabs는 OpenAI 같은 자연어 instructions가 없어 숫자로 흉내낸다.
           voice_settings: {
-            stability: 0.6,
+            stability: 0.3,
             similarity_boost: 0.8,
-            style: 0.3,
-            speed: 0.92,
+            style: 0.65,
+            speed: 1.08,
             use_speaker_boost: true,
           },
         }),
