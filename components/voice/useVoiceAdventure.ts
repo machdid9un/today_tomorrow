@@ -7,6 +7,7 @@ import { OrderedAudioQueue } from "./audioQueue";
 import { iterateSSE, parseJSONData } from "./sse";
 import {
   DEFAULT_VOICE_SESSION_CONFIG,
+  type PlanetId,
   type SessionPhase,
   type TurnCompletePayload,
   type TurnSentence,
@@ -17,9 +18,11 @@ import { startEnergyVAD } from "./vad";
 export interface UseVoiceAdventureOptions {
   episodeId: string;
   mode: VoiceMode;
+  /** 로컬 테스트용: 미리 고른 오늘의 별. 안 넘기면 서버가 episodeId로 고정 선택(기존 동작). */
+  themeId?: PlanetId;
 }
 
-export function useVoiceAdventure({ episodeId, mode }: UseVoiceAdventureOptions) {
+export function useVoiceAdventure({ episodeId, mode, themeId }: UseVoiceAdventureOptions) {
   const [phase, setPhase] = useState<SessionPhase>("idle");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [choices, setChoices] = useState<string[]>([]);
@@ -269,6 +272,8 @@ export function useVoiceAdventure({ episodeId, mode }: UseVoiceAdventureOptions)
             turnIndex,
             prevLatencyMs: prevLatencyMsRef.current,
             short,
+            // 첫 턴에 한 번만 보내도 서버가 회차 동안 기억한다(API 계약). 매번 보내도 무해함(같으면 no-op).
+            ...(themeId ? { themeId } : {}),
           }),
         });
       } catch {
@@ -351,7 +356,7 @@ export function useVoiceAdventure({ episodeId, mode }: UseVoiceAdventureOptions)
       turnIndexRef.current = turnIndex + 1;
       // eslint-disable-next-line react-hooks/exhaustive-deps
     },
-    [episodeId, clearSilenceTimer, scheduleErrorRecovery]
+    [episodeId, themeId, clearSilenceTimer, scheduleErrorRecovery]
   );
 
   const finishTurn = useCallback(

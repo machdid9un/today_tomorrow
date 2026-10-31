@@ -3,6 +3,11 @@ import type { EndReason } from "@/types";
 
 export type VoiceMode = "handsfree" | "ptt";
 
+// 오늘의 별(행성). 역할 3 API 계약(app/api/story/turn)의 themeId와 동일한 값.
+// 로컬 테스트용(역할 4 kid/page.tsx)에서 미리 고를 수 있게 선택적으로 추가. 안 넘기면 서버가
+// episodeId로 고정 선택하던 기존 동작과 동일하다(하위 호환).
+export type PlanetId = "forest" | "waterfire" | "upside" | "rainbow";
+
 export type SessionPhase =
   | "idle" // 시작 전
   | "requesting-permission" // 마이크 권한 요청 중

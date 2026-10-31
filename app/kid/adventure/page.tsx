@@ -6,18 +6,24 @@
 // episodeId는 /api/sessions 생성 후 쿼리스트링으로 전달된다고 가정합니다.
 // TODO(역할 1·4 확인): episodeId를 쿼리스트링 대신 다른 방식(쿠키/컨텍스트)으로 넘기기로 하면 여기만 바꾸면 됨.
 import VoiceSession from "@/components/voice/VoiceSession";
-import type { VoiceMode } from "@/components/voice/types";
+import type { PlanetId, VoiceMode } from "@/components/voice/types";
 
 function resolveVoiceMode(): VoiceMode {
   return process.env.VOICE_MODE === "ptt" ? "ptt" : "handsfree";
 }
 
+const PLANET_IDS: PlanetId[] = ["forest", "waterfire", "upside", "rainbow"];
+function resolveThemeId(v: string | undefined): PlanetId | undefined {
+  return PLANET_IDS.includes(v as PlanetId) ? (v as PlanetId) : undefined;
+}
+
 export default async function AdventurePage({
   searchParams,
 }: {
-  searchParams: Promise<{ episodeId?: string }>;
+  // themeId: 로컬 테스트용(역할 4). 안 넘기면 기존처럼 서버가 episodeId로 고정 선택한다.
+  searchParams: Promise<{ episodeId?: string; themeId?: string }>;
 }) {
-  const { episodeId } = await searchParams;
+  const { episodeId, themeId } = await searchParams;
   const mode = resolveVoiceMode();
 
   if (!episodeId) {
@@ -31,7 +37,7 @@ export default async function AdventurePage({
 
   return (
     <main>
-      <VoiceSession episodeId={episodeId} mode={mode} />
+      <VoiceSession episodeId={episodeId} mode={mode} themeId={resolveThemeId(themeId)} />
     </main>
   );
 }
