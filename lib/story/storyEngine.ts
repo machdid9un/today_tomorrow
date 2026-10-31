@@ -4,6 +4,7 @@ import type { EndReason, StoryTurnResult } from "@/types";
 import type { EpisodeContext } from "./contextStore";
 import { chatJSON, hasLlmKey, LlmJsonError, STORY_MODEL } from "./llm";
 import { detectChildName } from "./memorySummarizer";
+import { toYongStyle, withTopic } from "./persona";
 import { buildStoryMessages, CLOSING_LINE, OPENING_GUEST, type TurnMode } from "./prompts";
 import { isSafetyConcern } from "./safety";
 import { plotPatternFor } from "./plotPatterns";
@@ -45,14 +46,14 @@ export function isSleepRequest(text: string): boolean {
   return SLEEP_PATTERN.test(text.replace(/\s+/g, " "));
 }
 
-/** TTS 큐용 문장 분할. "치익…" 같은 짧은 감탄도 한 문장으로 취급. */
+/** TTS 큐용 문장 분할. "앗…" 같은 짧은 감탄도 한 문장으로 취급. */
 export function splitSentences(text: string): string[] {
   const normalized = text.replace(/\s+/g, " ").trim();
   const parts = normalized.match(/[^.!?…~。！？]+[.!?…~。！？]*["'”’)]*/g) ?? [normalized];
   return parts.map((s) => s.trim()).filter(Boolean);
 }
 
-const FALLBACK_QUESTION = "대장님은 어떻게 하고 싶어요?";
+const FALLBACK_QUESTION = "너는 어떻게 하고 싶어용?";
 const SENTENCE_END = /[.!?…~。！？]["'”’)]*$/;
 
 /**
@@ -138,17 +139,17 @@ function endingReasonFor(mode: TurnMode): EndReason | null {
 /** 키가 없을 때(로컬 개발) 쓰는 가짜 턴. 계약 형태는 실제와 동일. */
 function mockTurn(mode: TurnMode, turnIndex: number): RawTurn {
   if (mode.startsWith("ending")) {
-    return { narration: "노란 용은 대장님 덕분에 다시 하늘을 날 수 있게 됐어요.", choices: [] };
+    return { narration: "아기 고래는 친구 덕분에 다시 노래할 수 있게 됐어용.", choices: [] };
   }
   if (mode === "seed") {
     return {
-      narration: "용이 날개를 다쳐서 천천히 걸어요. 그런데 저 멀리 로켓이 떠나려고 해요. 용 옆에 남을까요, 아니면 로켓을 탈까요?",
-      choices: ["용 옆에 남기", "로켓 타기"],
+      narration: "아기 고래가 지느러미를 다쳐서 천천히 헤엄쳐용. 그런데 저 멀리 배가 떠나려고 해용. 고래 곁에 남을까용, 아니면 배를 탈까용?",
+      choices: ["곁에 남을래", "배 탈래"],
     };
   }
   return {
-    narration: `(${turnIndex}턴) 무전기에서 지직 소리가 났어요. 저 멀리 노란 용이 손을 흔들고 있어요. 용한테 뭐라고 말해 볼까요?`,
-    choices: ["인사하기", "숨어서 보기"],
+    narration: `(${turnIndex}턴) 철썩철썩 파도 소리가 들려용. 저 멀리 아기 고래가 꼬리를 흔들고 있어용. 고래한테 뭐라고 말해 볼까용?`,
+    choices: ["안녕 할래", "숨어서 볼래"],
     childName: turnIndex === 1 ? "지우" : null,
   };
 }
@@ -230,15 +231,17 @@ export async function generateTurn(input: GenerateTurnInput): Promise<GeneratedT
           raw.narration.trim(),
           shouldEnd,
           askName
-            ? "누가 신호를 보냈을까요?"
+            ? "누가 도와 달라고 했을까용?"
             : /이름/.test(raw.narration) // 이름 짓기 턴인데 질문이 빠진 경우
-              ? "이 친구 이름을 뭐라고 지어 줄까요?"
-              : FALLBACK_QUESTION,
+              ? "이 친구 이름을 뭐라고 지어 줄까용?"
+              : `${withTopic(ctx.childName)} 어떻게 하고 싶어용?`,
           // 안전 응답('어른에게 말하기')과 갈림길 장면(받아 주기 + 장면 설명 + 질문)은 잘리지 않게 4문장까지
           mode === "safety" || mode === "seed" ? 4 : 3
         )
       : "";
   if (!narration) throw new Error("EMPTY_NARRATION");
+  // 이야기 용 말투: 문장 끝 '요' → '용' (모델이 빠뜨려도 코드가 맞춘다. 다른 인물의 따옴표 대사는 그대로)
+  narration = toYongStyle(narration);
 
   let choices = Array.isArray(raw.choices)
     ? raw.choices

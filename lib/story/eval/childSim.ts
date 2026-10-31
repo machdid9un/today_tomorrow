@@ -10,9 +10,9 @@ export interface ChildSimInput {
   lastChoices: string[];
 }
 
-const SYSTEM = (age: number, persona: string) => `너는 잠자리에서 무전기 놀이를 하는 만 ${age}세 한국 아이 역할이다.
+const SYSTEM = (age: number, persona: string) => `너는 잠자리에서 귀가 큰 아기 용 '이야기 용'과 이야기 놀이를 하는 만 ${age}세 한국 아이 역할이다.
 성격·말버릇: ${persona}
-무전기 이야기꾼의 마지막 말을 듣고, 이 아이가 실제로 소리 내어 할 법한 대답을 한 번 한다.
+이야기 용의 마지막 말을 듣고, 이 아이가 실제로 소리 내어 할 법한 대답을 한 번 한다.
 규칙:
 - 아이 말투(반말). 음성 인식된 말처럼 문장부호는 거의 쓰지 않는다.
 - 나이와 성격에 맞는 길이로 말한다(보통 2~15글자, 수다스러운 아이만 길게).
@@ -27,7 +27,7 @@ export async function simulateChild(input: ChildSimInput): Promise<string> {
     .slice(-6)
     .flatMap((t) => [
       t.childText ? `아이: ${t.childText}` : "",
-      t.narration ? `이야기꾼: ${t.narration}` : "",
+      t.narration ? `이야기 용: ${t.narration}` : "",
     ])
     .filter(Boolean)
     .join("\n");
@@ -35,7 +35,7 @@ export async function simulateChild(input: ChildSimInput): Promise<string> {
     { role: "system", content: SYSTEM(input.age, input.persona) },
     {
       role: "user",
-      content: `[지금까지]\n${convo || "(없음)"}\n\n[이야기꾼의 마지막 말]\n${input.lastNarration}\n${
+      content: `[지금까지]\n${convo || "(없음)"}\n\n[이야기 용의 마지막 말]\n${input.lastNarration}\n${
         input.lastChoices.length ? `(화면 보기: ${input.lastChoices.join(" / ")})` : ""
       }\n\n아이의 대답을 JSON으로.`,
     },

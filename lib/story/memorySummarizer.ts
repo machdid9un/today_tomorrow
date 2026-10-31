@@ -5,6 +5,7 @@
 import type { StoryMemory } from "@/types";
 import type { TurnRecord } from "./contextStore";
 import { chatJSON, hasLlmKey, REPORT_MODEL, type ChatMessage } from "./llm";
+import { withSubject } from "./persona";
 import { CLOSING_LINE } from "./prompts";
 import { hasPersonalInfo, isSafetyConcern } from "./safety";
 
@@ -38,8 +39,8 @@ const EPISODE_TITLE_MAX = 20;
 const TRANSCRIPT_MAX_TURNS = 60;
 const TRANSCRIPT_LINE_MAX = 300;
 
-const QUIET_ISLAND_TITLE = "조용한 섬";
-const QUIET_EPISODE_TITLE = "조용한 밤의 무전";
+const QUIET_ISLAND_TITLE = "조용한 별";
+const QUIET_EPISODE_TITLE = "조용한 밤의 이야기";
 
 type NamedKey = "characters" | "items" | "places";
 const MEMORY_KEYS = ["characters", "items", "places", "keyEvents", "nextHook"] as const;
@@ -67,9 +68,10 @@ function isRecord(v: unknown): v is Record<string, unknown> {
   return Boolean(v) && typeof v === "object" && !Array.isArray(v);
 }
 
-const SIGN_OFF_PATTERN = /오늘\s*무전은\s*여기까지[.!…~]*\s*(?:내일\s*또\s*만나[.!…~]*)?/g;
+const SIGN_OFF_PATTERN =
+  /오늘\s*(?:무전은|이야기는)\s*여기까지(?:예용|예요|야)?[.!…~]*\s*(?:잘\s*자용?[,.!…~]*\s*)?(?:내일\s*또\s*만나용?[.!…~]*)?/g;
 
-/** 무전기 종료 멘트(CLOSING_LINE) 제거 */
+/** 종료 멘트(CLOSING_LINE) 제거 */
 function removeSignOff(text: string): string {
   return text.split(CLOSING_LINE).join(" ").replace(SIGN_OFF_PATTERN, " ");
 }
@@ -226,7 +228,7 @@ const NAME_REJECT_PATTERN = /(몰라|모르|몰루|비밀|싫어|싫은데|안\s
 const NAME_STOPWORDS = new Set([
   "응", "어", "아", "네", "예", "음", "엉", "웅", "나", "저", "너", "왜", "뭐", "누구",
   "아니", "아니야", "좋아", "그래", "안녕", "안녕하세요", "하이", "헬로", "여보세요",
-  "대장", "대장님", "탐험대", "치익", "여기", "이름",
+  "대장", "대장님", "탐험대", "치익", "여기", "이름", "이야기", "용", "친구",
   "hi", "hello", "yes", "no", "ok", "okay",
 ]);
 const NAME_PREFIXES: RegExp[] = [
@@ -363,18 +365,18 @@ function cleanEpisodeTitle(v: unknown): string | null {
 function fallbackIslandTitle(memory: StoryMemory, episodeNumber: number): string {
   const candidates = [
     memory.characters[0],
-    memory.places.find((p) => p.endsWith("섬")),
+    memory.places.find((p) => /(섬|별|행성)$/.test(p)),
     memory.items[0],
   ];
   for (const c of candidates) {
     if (!c) continue;
     const base = collapse(c.replace(/\(.*?\)|\[.*?\]/g, ""));
     if (!base) continue;
-    const title = base.endsWith("섬") ? base : `${base} 섬`;
+    const title = /(섬|별|행성)$/.test(base) ? base : `${base} 별`;
     const len = charLength(title);
     if (len >= ISLAND_TITLE_MIN && len <= ISLAND_TITLE_MAX) return title;
   }
-  return `${episodeNumber}번째 섬`;
+  return `${episodeNumber}번째 별`;
 }
 
 /** LLM 없이 턴 기록을 그대로 엮은 동화책 (mock / storybookText 깨졌을 때) */
@@ -383,12 +385,12 @@ function buildPlainStorybook(turns: TurnRecord[], callName: string, skipChildAt:
   turns.forEach((t, i) => {
     const parts: string[] = [];
     const child = collapse(textOf(t.childText));
-    if (child && i !== skipChildAt) parts.push(`${callName}이 말했어요. “${clip(child, 60)}”`);
+    if (child && i !== skipChildAt) parts.push(`${withSubject(callName)} 말했어요. “${clip(child, 60)}”`);
     const narration = storySentences(textOf(t.narration)).join(" ");
     if (narration) parts.push(narration);
     if (parts.length) paras.push(parts.join(" "));
   });
-  if (!paras.length) paras.push("무전기 너머에서 작은 섬의 신호가 들려왔어요.");
+  if (!paras.length) paras.push("오늘 밤, 작은 별에서 누군가 도와 달라는 소리가 들려왔어요.");
   const capped = paras.length > 12 ? [...paras.slice(0, 6), ...paras.slice(-6)] : paras;
   return capped.join("\n\n");
 }
@@ -396,10 +398,10 @@ function buildPlainStorybook(turns: TurnRecord[], callName: string, skipChildAt:
 /** 아이 발화가 0개일 때: 내레이션 몇 문장 + 조용한 마무리 (1~2문단) */
 function buildQuietStorybook(turns: TurnRecord[], callName: string): string {
   const sentences = turns.flatMap((t) => storySentences(textOf(t.narration))).slice(0, 4);
-  const first = sentences.length ? sentences.join(" ") : "무전기 너머에서 작은 섬의 신호가 들려왔어요.";
+  const first = sentences.length ? sentences.join(" ") : "오늘 밤, 작은 별에서 누군가 도와 달라는 소리가 들려왔어요.";
   return [
     first,
-    `오늘 밤 ${callName}은 조용히 무전을 들었어요. 작은 섬은 ${callName}이 다시 찾아올 날을 기다리며 반짝반짝 빛났답니다.`,
+    `오늘 밤 ${withSubject(callName)} 조용히 이야기를 들었어요. 작은 별은 ${withSubject(callName)} 다시 찾아올 날을 기다리며 반짝반짝 빛났어요.`,
   ].join("\n\n");
 }
 
@@ -424,18 +426,30 @@ function isGenuineQuote(quote: string, said: string[]): boolean {
 }
 
 const SPEECH = "(?:말했어요|말했지요|대답했어요|외쳤어요|속삭였어요|소리쳤어요|말했답니다)";
-// "지우 대장님이 말했어요. “…”" / "“…” 지우 대장님이 외쳤어요."
-const QUOTE_AFTER = new RegExp(`([^.!?…\\n“”]*대장님[^.!?…\\n“”]*?${SPEECH}[.!]?)\\s*“([^”]{1,120})”[.!]?`, "g");
-const QUOTE_BEFORE = new RegExp(`“([^”]{1,120})”[.!]?\\s*((?:[가-힣]+\\s)?대장님[이은도]?[^.!?…\\n“”]{0,12}${SPEECH}[.!]?)`, "g");
+
+function escapeRe(x: string): string {
+  return x.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/** "지우가 말했어요. “…”" / "“…” 지우가 외쳤어요." — 아이를 가리키는 말(이름·친구·대장님) 뒤 말하기 동사 */
+function quoteRegexes(speakers: string[]): [RegExp, RegExp] {
+  const who = `(?:${speakers.map(escapeRe).join("|")})`;
+  return [
+    new RegExp(`([^.!?…\\n“”]*${who}[^.!?…\\n“”]*?${SPEECH}[.!]?)\\s*“([^”]{1,120})”[.!]?`, "g"),
+    new RegExp(`“([^”]{1,120})”[.!]?\\s*((?:[가-힣]+\\s)?${who}[이가은는도]?[^.!?…\\n“”]{0,12}${SPEECH}[.!]?)`, "g"),
+  ];
+}
 
 /**
- * 대장님이 말했다고 적힌 인용 중 실제 대장님 말에 없는 것(지어낸 대사)을 문장째 뺀다.
- * 현실 위험 발화·개인정보는 '실제 말' 목록에서 빼서, 인용되면 같이 지워진다.
+ * 아이가 말했다고 적힌 인용 중 실제 아이 말에 없는 것(지어낸 대사)을 문장째 뺀다.
+ * speakers: 동화책에서 아이를 가리키는 말(아이 이름 등). 현실 위험 발화·개인정보는 '실제 말' 목록에서 빼서, 인용되면 같이 지워진다.
  */
 export function dropFabricatedChildQuotes(
   storybook: string,
-  childTexts: string[]
+  childTexts: string[],
+  speakers: string[] = ["친구", "대장님"]
 ): { text: string; dropped: string[] } {
+  const [QUOTE_AFTER, QUOTE_BEFORE] = quoteRegexes(speakers.filter(Boolean));
   const said = childTexts
     .filter((t) => t && !isSafetyConcern(t) && !hasPersonalInfo(t))
     .map(normKo)
@@ -462,42 +476,44 @@ export function dropFabricatedChildQuotes(
 // ───────────────────────── 프롬프트 ─────────────────────────
 
 function buildSystemPrompt(callName: string): string {
-  return `너는 '상상 무전기' 탐험대 본부의 기록 담당 대원이야. 방금 끝난 잠자리 모험(만 4~9세 아이와 무전기로 나눈 대화)을 정리한다. 아이는 탐험대 '대장님'이고, 회차마다 새로운 섬을 탐험한다. 대화에서 [무전기]는 이야기꾼의 말, [대장님]은 아이의 말이다.
+  const subj = withSubject(callName);
+  return `너는 '상상 무전기'의 이야기 기록 담당이야. 방금 끝난 잠자리 이야기(만 4~9세 아이와 귀가 큰 아기 용 '이야기 용'이 함께 만든 대화)를 정리한다. 이야기 용은 '우리별'이라 부르는 작은 행성들에 살고, 아이와 매번 한 별에서 모험한다. 대화에서 [이야기 용]은 용의 말('~용' 말투), [아이]는 아이의 말이다.
 
 만들 것:
 
-1) worldMemory — 다음 모험에서 이어 쓸 이야기 세계의 기억
-- characters, items, places: [지난 모험의 기억]과 이번 모험을 합친 목록. 각각 최대 6개, 짧은 이름으로(예: "노랑이(노란 아기 용)", "종이 로켓", "구름 섬"). 대장님이 직접 이름을 붙였거나 아끼고 챙긴 것을 앞에 둔다. 지난 기억 중 이번에 다시 나왔거나 대장님이 좋아한 것은 남긴다. 같은 대상은 한 번만 쓴다.
-- keyEvents: 이번 모험에서 대장님이 한 일만 1~3개, 시간 순서대로. 짧은 과거형 문장(예: "대장님이 다친 노랑이에게 붕대를 감아 주었다"). 지난 사건은 다시 쓰지 않는다. 졸려서 잠든 일, 무전을 끝낸 일 같은 마무리 장면은 넣지 않는다. 대화에 [메모]로 "대답하지 않았다"고 적힌 질문의 선택은 기억에도 동화책에도 쓰지 않는다. 대장님이 하지 않은 선택이나 결말을 지어내지 않는다.
-- nextHook: 다음 모험의 첫 장면이 이어받을 수 있는 한 문장(예: "노랑이가 새 친구를 데려오기로 했다").
-- 이야기 세계의 내용만 쓴다. 대장님이 말했더라도 현실 정보(학교·유치원·학원 이름, 주소, 전화번호, 가족·친구와의 다툼이나 고민, 현실의 사람 이야기)는 절대 넣지 않는다.
+1) worldMemory — 다음 이야기에서 이어 쓸 이야기 세계의 기억
+- characters, items, places: [지난 이야기의 기억]과 이번 이야기를 합친 목록. 각각 최대 6개, 짧은 이름으로(예: "노랑이(노란 아기 고래)", "종이배", "반딧불 오두막"). 아이가 직접 이름을 붙였거나 아끼고 챙긴 것을 앞에 둔다. 지난 기억 중 이번에 다시 나왔거나 아이가 좋아한 것은 남긴다. 같은 대상은 한 번만 쓴다. 이야기 용 자신은 넣지 않는다.
+- keyEvents: 이번 이야기에서 아이가 한 일만 1~3개, 시간 순서대로. 짧은 과거형 문장(예: "${subj} 다친 노랑이에게 반창고를 붙여 주었다"). 지난 사건은 다시 쓰지 않는다. 졸려서 잠든 일, 이야기를 끝낸 일 같은 마무리 장면은 넣지 않는다. 대화에 [메모]로 "대답하지 않았다"고 적힌 질문의 선택은 기억에도 동화책에도 쓰지 않는다. 아이가 하지 않은 선택이나 결말을 지어내지 않는다.
+- nextHook: 다음 이야기의 첫 장면이 이어받을 수 있는 한 문장(예: "노랑이가 새 친구를 데려오기로 했다").
+- 이야기 세계의 내용만 쓴다. 아이가 말했더라도 현실 정보(학교·유치원·학원 이름, 주소, 전화번호, 가족·친구와의 다툼이나 고민, 현실의 사람 이야기)는 절대 넣지 않는다.
 
 2) storybookText — 부모가 아이에게 소리 내어 읽어 줄 그림책 본문
-- 문체: 다정한 해요체 동화체. 서술은 "~했어요", "~이에요"가 기본이고 "~지요"는 가끔. 마지막 문장도 해요체("~잠이 들었어요")로 끝낸다. 반말 서술("~했어", "~했지", "~했단다")은 쓰지 않는다. 같은 어미를 세 문장 연속 쓰지 않는다. 과거형("불었어요")과 현재형("불어요")을 섞어 리듬을 만든다.
+- 문체: 다정한 해요체 동화체(서술은 표준 해요체, '~용' 말투는 쓰지 않는다). 서술은 "~했어요", "~이에요"가 기본이고 "~지요"는 가끔. 마지막 문장도 해요체("~잠이 들었어요")로 끝낸다. 반말 서술("~했어", "~했지", "~했단다")은 쓰지 않는다. 같은 어미를 세 문장 연속 쓰지 않는다. 과거형("불었어요")과 현재형("불어요")을 섞어 리듬을 만든다.
+- 등장: 주인공은 아이("${callName}")이고, 이야기 용은 곁의 친구로 함께 나온다. 이야기 용의 대사를 넣는다면 '~용' 말투로 쓴다(예: 이야기 용이 속삭였어요. “쉿, 소리가 들려용.”).
 - 길이: 문단 5~7개, 문단마다 2~3문장. 문단 사이는 빈 줄(JSON 문자열 안에서는 \\n\\n). 한 문장은 30자 안팎으로 짧게(길어도 40자).
-- 흐름: ① 밤과 무전 신호로 시작 → ② 만난 친구(대장님이 이름을 지어 줬으면 "${callName}이 지어 준 이름, ○○"처럼 이름 지은 일을 적고, 그 뒤로는 이름을 계속 부른다) → ③ 생긴 문제 하나 → ④ 대장님의 결정 → ⑤ 그 결정 "덕분에/그래서" 달라진 결과(문제는 꼭 풀어 준다. 고르지 않은 쪽 — 예: 떠나는 배 — 도 "배는 내일 밤 다시 오기로 했어요"처럼 한 문장으로 포근하게 정리한다) → ⑥ 조용히 잠드는 마무리.
-- 대장님의 목소리: 대장님이 직접 한 말 중 결정·아이디어·이름이 담긴 말 2~3개를 둥근 큰따옴표(“ ”) 대사로 원문 그대로 인용한다. 반말·조사도 고치지 않고 더듬는 말(어, 그, 음)만 뺀다. 누가 말했는지 밝히되, 매번 "~이 말했어요."로 똑같이 쓰지 않는다(외쳤어요, 속삭였어요, 대답했어요, 또는 대사를 먼저 쓰고 뒤에 말한 사람). 예) ${callName}이 말했어요. “옆에 있을래.” / “노랑이!” ${callName}이 외쳤어요.
-- 한 낱말 대답(예: "용")을 여러 번 했으면 인용은 한 번만 한다. 대장님이 "무서워"처럼 마음을 말했으면 그 마음을 존중하는 장면으로 잇고, 하지 않은 용감한 행동을 지어내지 않는다.
-- 인용은 [대장님] 줄에 실제로 있는 말만 쓴다. 대장님이 하지 않은 말을 대장님 대사로 지어내지 않는다(친구 인물의 대사는 지어내도 된다).
+- 흐름: ① 밤과 오늘의 별, 소리 단서로 시작 → ② 만난 친구(아이가 이름을 지어 줬으면 "${subj} 지어 준 이름, ○○"처럼 이름 지은 일을 적고, 그 뒤로는 이름을 계속 부른다) → ③ 생긴 문제 하나 → ④ 아이의 결정 → ⑤ 그 결정 "덕분에/그래서" 달라진 결과(문제는 꼭 풀어 준다. 고르지 않은 쪽 — 예: 떠나는 배 — 도 "배는 내일 밤 다시 오기로 했어요"처럼 한 문장으로 포근하게 정리한다) → ⑥ 조용히 잠드는 마무리.
+- 아이의 목소리: 아이가 직접 한 말 중 결정·아이디어·이름이 담긴 말 2~3개를 둥근 큰따옴표(“ ”) 대사로 원문 그대로 인용한다. 반말·조사도 고치지 않고 더듬는 말(어, 그, 음)만 뺀다. 누가 말했는지 밝히되, 매번 "~가 말했어요."로 똑같이 쓰지 않는다(외쳤어요, 속삭였어요, 대답했어요, 또는 대사를 먼저 쓰고 뒤에 말한 사람). 예) ${subj} 말했어요. “옆에 있을래.” / “노랑이!” ${subj} 외쳤어요.
+- 한 낱말 대답(예: "고래")을 여러 번 했으면 인용은 한 번만 한다. 아이가 "무서워"처럼 마음을 말했으면 그 마음을 존중하는 장면으로 잇고, 하지 않은 용감한 행동을 지어내지 않는다.
+- 인용은 [아이] 줄에 실제로 있는 말만 쓴다. 아이가 하지 않은 말을 아이 대사로 지어내지 않는다(친구 인물과 이야기 용의 대사는 지어내도 된다).
 - 인용하지 않는 말: AI냐는 질문, [메모]에서 쓰지 말라고 한 말, 생략된 말. 졸리다는 말은 마지막 문단에 인용해도 좋다.
-- 소리 내어 읽기: 의성어·의태어 5~8개(반짝반짝, 살금살금처럼 되풀이하는 말). 앞부분은 또렷한 소리, 뒷부분은 부드러운 소리(살랑살랑, 솔솔, 새근새근). 이번 모험에 어울리는 짧은 후렴 하나를 새로 만들어 처음·가운데·끝에 되풀이하고, 마지막엔 잠 쪽으로 살짝 바꾼다. 문단마다 소리·감촉·온도 같은 감각 하나.
+- 소리 내어 읽기: 의성어·의태어 5~8개(반짝반짝, 살금살금처럼 되풀이하는 말). 앞부분은 또렷한 소리, 뒷부분은 부드러운 소리(살랑살랑, 솔솔, 새근새근). 이번 이야기에 어울리는 짧은 후렴 하나를 새로 만들어 처음·가운데·끝에 되풀이하고, 마지막엔 잠 쪽으로 살짝 바꾼다. 문단마다 소리·감촉·온도 같은 감각 하나.
 - 잠드는 곡선: 마지막 두 문단에는 새 사건 없이 문장을 더 짧게, 소리와 빛이 점점 줄어들게 쓴다. 질문·교훈 없이 끝내고, "아침" 같은 낮 장면으로 끝내지 않는다.
-- 지어내지 않기: 장면을 잇는 작은 묘사는 덧붙여도 되지만, 대장님이 하지 않은 선택·행동·결말은 만들지 않는다. 대장님이 답하지 않은 질문의 선택은 쓰지 않는다.
-- 아이는 "${callName}" 또는 "대장님"이라고 부른다. 이름을 묻고 답한 부분, 무전기 마지막 인사("${CLOSING_LINE}")는 넣지 않는다.
+- 지어내지 않기: 장면을 잇는 작은 묘사는 덧붙여도 되지만, 아이가 하지 않은 선택·행동·결말은 만들지 않는다. 아이가 답하지 않은 질문의 선택은 쓰지 않는다.
+- 아이는 "${callName}"(이름)으로 부른다. 이름을 묻고 답한 부분, 이야기 용의 마지막 인사("${CLOSING_LINE}")는 넣지 않는다.
 - 무섭거나 위험한 내용은 부드럽게 바꾸고, 현실 정보는 넣지 않는다.
 
-[문단 뼈대 — 이번 모험의 내용으로 채운다. 매 회차 같은 문장으로 시작하거나 끝내지 않는다]
-1문단: 이번 섬과 신호 단서(대화에 나온 소리·빛·냄새)로 시작하고, 그 단서로 만든 후렴을 처음 들려준다.
-2문단: 신호를 보낸 친구를 만난다. 대장님의 첫 대사를 인용하고, 이름을 지어 줬으면 그 일을 적는다.
+[문단 뼈대 — 이번 이야기의 내용으로 채운다. 매 회차 같은 문장으로 시작하거나 끝내지 않는다]
+1문단: 오늘의 별과 소리 단서(대화에 나온 소리·빛·냄새)로 시작하고, 그 단서로 만든 후렴을 처음 들려준다.
+2문단: 도와 달라던 친구를 만난다. 아이의 첫 대사를 인용하고, 이름을 지어 줬으면 그 일을 적는다.
 3문단: 생긴 문제 하나와 감각 묘사 하나.
-4문단: 대장님의 결정을 대사로 인용한다.
+4문단: 아이의 결정을 대사로 인용한다.
 5문단: 그 결정 덕분에 달라진 결과, 고르지 않은 쪽의 포근한 정리, 후렴 두 번째.
 6문단: 소리와 빛이 잦아드는 밤.
-7문단: 후렴을 잠 쪽으로 바꾼 짧은 마지막 문장(이번 모험의 친구나 물건으로 끝낸다).
-짧은 모험이면 2·3문단이나 5·6문단을 합쳐 5문단으로 써도 된다.
+7문단: 후렴을 잠 쪽으로 바꾼 짧은 마지막 문장(이번 이야기의 친구나 물건으로 끝낸다).
+짧은 이야기면 2·3문단이나 5·6문단을 합쳐 5문단으로 써도 된다.
 
-3) islandTitle — 오늘 탐험한 섬의 이름. 2~8글자로 귀엽게(예: "노랑이 섬", "별사탕 섬").
-4) episodeTitle — 오늘 이야기의 제목. 20자 이내(예: "다친 용과 떠나는 로켓").
+3) islandTitle — 오늘 이야기의 장소 이름(오늘의 별 안의 한 곳). 2~8글자로 귀엽게(예: "반딧불 오두막", "별사탕 언덕").
+4) episodeTitle — 오늘 이야기의 제목. 20자 이내(예: "다친 고래와 떠나는 배").
 
 출력은 아래 형식의 JSON 하나만. 다른 글자 금지.
 {"worldMemory": {"characters": ["..."], "items": ["..."], "places": ["..."], "keyEvents": ["..."], "nextHook": "..."}, "storybookText": "...", "islandTitle": "...", "episodeTitle": "..."}`;
@@ -519,17 +535,17 @@ function transcriptLines(turns: TurnRecord[], skipNameQA: boolean): string[] {
     let memo = "";
     if (child && isSafetyConcern(child)) {
       child = "(현실 이야기라 기록하지 않음)";
-      memo = "[메모] 이 턴의 대장님 말과 무전기의 위로(어른에게 말하기)는 현실 이야기다. 동화책·기억에 쓰지 말고, 이야기 장면만 이어서 쓴다.";
+      memo = "[메모] 이 턴의 아이 말과 이야기 용의 위로(어른에게 말하기)는 현실 이야기다. 동화책·기억에 쓰지 말고, 이야기 장면만 이어서 쓴다.";
     } else if (child && hasPersonalInfo(child)) {
       child = "(개인정보라 생략)";
     }
-    if (child) lines.push(`[대장님] ${clip(child, TRANSCRIPT_LINE_MAX)}`);
-    if (narration) lines.push(`[무전기] ${clip(narration, TRANSCRIPT_LINE_MAX)}`);
+    if (child) lines.push(`[아이] ${clip(child, TRANSCRIPT_LINE_MAX)}`);
+    if (narration) lines.push(`[이야기 용] ${clip(narration, TRANSCRIPT_LINE_MAX)}`);
     if (memo) lines.push(memo);
   });
   const lastNarration = collapse(removeSignOff(textOf(turns[turns.length - 1]?.narration)));
   if (/[?？]["'”’)]*$/.test(lastNarration)) {
-    lines.push("[메모] 마지막 질문에 대장님은 대답하지 않았다(잠들었거나 대화가 끝남). 그 질문의 선택은 정해지지 않았다.");
+    lines.push("[메모] 마지막 질문에 아이는 대답하지 않았다(잠들었거나 대화가 끝남). 그 질문의 선택은 정해지지 않았다.");
   }
   return lines;
 }
@@ -543,7 +559,7 @@ function buildMessages(
 ): ChatMessage[] {
   const memoryText = isEmptyMemory(prev) ? "없음 (첫 모험)" : JSON.stringify(prev, null, 2);
   const user = [
-    `[대장님 호칭] ${callName}`,
+    `[아이 이름] ${callName}`,
     `[회차] ${episodeNumber}번째 모험`,
     "",
     "[지난 모험의 기억]",
@@ -573,7 +589,7 @@ export async function summarizeEpisode(input: SummarizeEpisodeInput): Promise<Su
   const givenName = collapse(textOf(input.childName)) || null;
   const childName = givenName ?? (nameAsked ? detectChildName(textOf(turns[1]?.childText)) : null);
   const skipChildAt = nameAsked ? 1 : null;
-  const callName = childName ? `${childName} 대장님` : "대장님";
+  const callName = childName ?? "친구";
 
   // 1) 아이 발화 0개: LLM 없이 기본 결과
   const spoken = turns.some((t) => collapse(textOf(t.childText)).length > 0);
@@ -593,14 +609,14 @@ export async function summarizeEpisode(input: SummarizeEpisodeInput): Promise<Su
       .map((t, i) => (i === skipChildAt ? "" : collapse(textOf(t.childText))))
       .filter(Boolean);
     const worldMemory = mergeWorldMemory(prev, {
-      keyEvents: said.slice(-2).map((s) => `대장님이 "${clip(s, 20)}" 하고 말했다`),
-      nextHook: `${episodeNumber + 1}번째 섬에서 새로운 신호가 오기로 했다`,
+      keyEvents: said.slice(-2).map((s) => `${withSubject(callName)} "${clip(s, 20)}" 하고 말했다`),
+      nextHook: `${episodeNumber + 1}번째 별에서 새로운 친구가 기다리기로 했다`,
     });
     return {
       worldMemory,
       storybookText: buildPlainStorybook(turns, callName, skipChildAt),
-      islandTitle: `${episodeNumber}번째 섬`,
-      episodeTitle: `대장님의 ${episodeNumber}번째 모험`,
+      islandTitle: `${episodeNumber}번째 별`,
+      episodeTitle: `${callName}의 ${episodeNumber}번째 이야기`,
       childName,
     };
   }
@@ -645,7 +661,7 @@ export async function summarizeEpisode(input: SummarizeEpisodeInput): Promise<Su
   if (storybookText) storybookText = dropTitleLine(storybookText, [episodeTitle, islandTitle]);
   if (storybookText) {
     const childTexts = turns.map((t, i) => (i === skipChildAt ? "" : textOf(t.childText)));
-    const guarded = dropFabricatedChildQuotes(storybookText, childTexts);
+    const guarded = dropFabricatedChildQuotes(storybookText, childTexts, [callName, "친구", "대장님"]);
     if (guarded.dropped.length) {
       console.warn(`[summarizer] 지어낸 대장님 대사 ${guarded.dropped.length}개 제거`);
       storybookText = guarded.text || storybookText;

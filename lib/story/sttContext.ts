@@ -1,5 +1,5 @@
 // 음성 인식(STT) 품질 보조: 맥락 프롬프트 + 환각 문장 걸러내기. 소유: 역할 3 (역할 2의 /api/transcribe가 가져다 씀).
-// - buildSttPrompt: 방금 무전기가 한 질문·보기·등장인물 이름을 STT에 힌트로 준다.
+// - buildSttPrompt: 방금 이야기 용이 한 질문·보기·등장인물 이름을 STT에 힌트로 준다.
 //   아이의 짧은 대답("별콩이!", "반딧불이")이나 지어낸 이름을 훨씬 잘 알아듣는다.
 // - isLikelySttHallucination: 조용하거나 시끄러울 때 STT가 지어내는 문장("시청해 주셔서 감사합니다" 등)을 걸러 낸다.
 import { loadEpisodeContext } from "./contextStore";
@@ -36,7 +36,7 @@ export function isLikelySttHallucination(text: string): boolean {
 const PROMPT_MAX = 260;
 
 /**
- * STT 맥락 프롬프트 = 이번 섬 테마 낱말 + 아이 이름·등장인물 + 방금 질문 + 화면 보기.
+ * STT 맥락 프롬프트 = 오늘의 별 낱말 + 아이 이름·등장인물 + 방금 질문 + 화면 보기.
  * OpenAI 전사 API의 prompt 필드에 그대로 넣는다(whisper-1, gpt-4o-mini-transcribe 모두 지원).
  * 실패해도 기본 문구는 돌려준다(전사를 막지 않음).
  */
@@ -45,7 +45,7 @@ export async function buildSttPrompt(
   choices: string[] = [],
   themeId?: string | null
 ): Promise<string> {
-  const base = "아이가 무전기 놀이에서 짧게 대답한 말.";
+  const base = "아이가 이야기 용과 놀며 짧게 대답한 말.";
   if (!episodeId) return base;
   try {
     const ctx = await loadEpisodeContext(episodeId);
@@ -53,7 +53,7 @@ export async function buildSttPrompt(
     const last = ctx.history[ctx.history.length - 1]?.narration ?? "";
     const question = splitSentences(last).filter((s) => /\?/.test(s)).pop() ?? "";
     const names = [
-      ctx.childName ? `${ctx.childName} 대장님` : "",
+      ctx.childName ? `${ctx.childName}` : "",
       ...(ctx.memory?.characters ?? []),
       ...(ctx.memory?.items ?? []),
     ]
@@ -95,14 +95,14 @@ export async function buildSttKeyterms(
   try {
     if (episodeId) {
       const ctx = await loadEpisodeContext(episodeId);
-      if (ctx.childName) terms.push(ctx.childName, `${ctx.childName} 대장님`);
+      if (ctx.childName) terms.push(ctx.childName);
       terms.push(...(ctx.memory?.characters ?? []), ...(ctx.memory?.items ?? []));
       terms.push(...themeSttWords(themeFor(episodeId, themeId)));
     }
   } catch {
     /* 맥락을 못 읽어도 보기만으로 진행 */
   }
-  terms.push("대장님", "무전기", "탐험대");
+  terms.push("이야기 용", "용", "우리별");
   const clean = terms
     .map((t) => t.replace(/\(.*?\)/g, "").replace(/[.?!,]/g, "").trim())
     .filter((t) => t && t.length <= maxLen && t.split(/\s+/).length <= 5);

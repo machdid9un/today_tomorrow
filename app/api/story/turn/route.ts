@@ -85,7 +85,7 @@ export async function POST(request: Request) {
         );
       } catch (err) {
         console.error("[story/turn] failed", err);
-        send("error", { code: "STORY_FAILED", message: "치익… 신호가 잠깐 약해졌어요. 다시 한 번 말해 줄래요?" });
+        send("error", { code: "STORY_FAILED", message: "앗, 잘 못 들었어용. 한 번 더 말해 줄래용?" });
       } finally {
         controller.close();
       }

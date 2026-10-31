@@ -214,6 +214,7 @@ async function storyAndScore(
         mustNotContain: sc.mustNotContain,
         mustContain: sc.mustContain,
         memoryText: JSON.stringify(summary.worldMemory),
+        childName,
       })
     : null;
 
@@ -345,6 +346,7 @@ export async function startRejudge(id: string, concurrency: number): Promise<Eva
           mustNotContain: sc?.mustNotContain,
           mustContain: sc?.mustContain,
           memoryText: JSON.stringify(r.summary.worldMemory),
+          childName: r.childName,
         });
       }
       r.judge = await judgeEpisode({ age: r.age, title: r.title, turns: r.turns, storybook: r.summary?.storybookText ?? "" });
