@@ -23,15 +23,27 @@ export interface ChatJSONOptions {
   maxTokens?: number;
   temperature?: number;
   timeoutMs?: number;
+  /** false면 모델의 추론(생각) 단계를 끈다. 실시간 턴처럼 빠른 응답이 필요할 때. 기본은 켬. */
+  thinking?: boolean;
+  /** 이 시간(ms) 안에 응답이 없으면 같은 요청을 하나 더 보내고 먼저 온 응답을 쓴다(꼬리 지연 줄이기). */
+  hedgeAfterMs?: number;
+}
+
+interface CallFlags {
+  json: boolean;
+  noThink: boolean;
 }
 
 /** 응답은 왔지만 JSON으로 읽을 수 없을 때. raw로 일부를 살려 쓸 수 있다. */
 export class LlmJsonError extends Error {
   constructor(
     public readonly raw: string,
-    public readonly finishReason: string | null
+    public readonly finishReason: string | null,
+    public readonly reasoningChars = 0
   ) {
-    super(`LLM_NOT_JSON (finish_reason=${finishReason ?? "?"}, len=${raw.length})`);
+    super(
+      `LLM_NOT_JSON (finish_reason=${finishReason ?? "?"}, len=${raw.length}, reasoning=${reasoningChars})`
+    );
     this.name = "LlmJsonError";
   }
 }
@@ -63,9 +75,48 @@ export function parseJSONLoose<T>(text: string): T {
 // ───────────── 모델 자동 선택 (키 등급에 맞춰) ─────────────
 
 type ModelCache = Map<string, string>;
-const globalForLlm = globalThis as unknown as { __llmModelCache?: ModelCache };
+
+/** 호출별 진단 기록 (자가 테스트에서 지연·추론 토큰 확인용). 최근 50개만 보관. */
+export interface LlmCallStats {
+  model: string;
+  ms: number;
+  finishReason: string | null;
+  contentChars: number;
+  reasoningChars: number;
+  completionTokens: number | null;
+  reasoningTokens: number | null;
+}
+
+const globalForLlm = globalThis as unknown as {
+  __llmModelCache?: ModelCache;
+  __llmStats?: LlmCallStats[];
+  __llmExtraBody?: Record<string, unknown> | null;
+};
 const modelCache: ModelCache =
   globalForLlm.__llmModelCache ?? (globalForLlm.__llmModelCache = new Map());
+const statsLog: LlmCallStats[] = globalForLlm.__llmStats ?? (globalForLlm.__llmStats = []);
+
+/** 지금까지 쌓인 진단 기록을 꺼내고 비운다. */
+export function drainLlmStats(): LlmCallStats[] {
+  return statsLog.splice(0, statsLog.length);
+}
+
+/** 실험용: 요청 본문에 덧붙일 필드 (예: 추론 끄기). 개발 서버 자가 테스트에서만 설정한다. */
+export function setLlmExtraBody(extra: Record<string, unknown> | null): void {
+  globalForLlm.__llmExtraBody = extra;
+}
+
+function extraBody(): Record<string, unknown> {
+  if (globalForLlm.__llmExtraBody) return globalForLlm.__llmExtraBody;
+  const raw = process.env.LLM_EXTRA_BODY;
+  if (!raw) return {};
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    return parsed && typeof parsed === "object" ? (parsed as Record<string, unknown>) : {};
+  } catch {
+    return {};
+  }
+}
 
 async function listModels(): Promise<string[]> {
   try {
@@ -97,10 +148,13 @@ export function pickModel(models: string[], requested: string): string | null {
 async function callOnce(
   opts: ChatJSONOptions,
   model: string,
-  useJsonMode: boolean
+  flags: CallFlags,
+  external?: AbortSignal
 ): Promise<Response> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), opts.timeoutMs ?? 15000);
+  const onExternalAbort = () => controller.abort();
+  external?.addEventListener("abort", onExternalAbort);
   try {
     return await fetch(`${baseUrl()}/chat/completions`, {
       method: "POST",
@@ -111,12 +165,44 @@ async function callOnce(
         max_tokens: opts.maxTokens ?? 600,
         temperature: opts.temperature ?? 0.7,
         stream: false,
-        ...(useJsonMode ? { response_format: { type: "json_object" } } : {}),
+        ...(flags.json ? { response_format: { type: "json_object" } } : {}),
+        // 래블업(DeepSeek 채팅 템플릿)에서 추론 끄기. 거부되면 chatJSON이 이 옵션 없이 재시도한다.
+        ...(flags.noThink ? { chat_template_kwargs: { thinking: false } } : {}),
+        ...extraBody(),
       }),
       signal: controller.signal,
     });
   } finally {
     clearTimeout(timer);
+    external?.removeEventListener("abort", onExternalAbort);
+  }
+}
+
+/** hedgeAfterMs가 있으면: 첫 요청이 그 시간 안에 안 끝나면 두 번째를 보내 먼저 끝난 쪽을 쓴다. */
+async function callHedged(opts: ChatJSONOptions, model: string, flags: CallFlags): Promise<Response> {
+  const hedgeAfter = opts.hedgeAfterMs;
+  if (!hedgeAfter) return callOnce(opts, model, flags);
+
+  const first = new AbortController();
+  const second = new AbortController();
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  let hedged = false;
+
+  const p1 = callOnce(opts, model, flags, first.signal).then((r) => ({ r, who: 1 as const }));
+  const p2 = new Promise<{ r: Response; who: 2 }>((resolve, reject) => {
+    timer = setTimeout(() => {
+      hedged = true;
+      callOnce(opts, model, flags, second.signal).then((r) => resolve({ r, who: 2 }), reject);
+    }, hedgeAfter);
+  });
+
+  try {
+    const winner = await Promise.any([p1, p2]);
+    (winner.who === 1 ? second : first).abort();
+    if (hedged) console.log(`[llm] hedged request: #${winner.who} answered first`);
+    return winner.r;
+  } finally {
+    if (timer) clearTimeout(timer);
   }
 }
 
@@ -126,21 +212,25 @@ function isModelRejected(status: number, detail: string): boolean {
 
 /**
  * JSON 하나를 돌려받는 채팅 호출.
- * - JSON 모드가 거부(400/422)되면 JSON 모드 없이 1회 재시도
+ * - 추론 끄기·JSON 모드가 거부(400/422)되면 그 옵션을 빼고 재시도
  * - 모델이 키 등급에 막히면(403/404) 허용 모델로 바꿔 1회 재시도
  * - 응답이 JSON이 아니면 LlmJsonError(raw 포함)를 던진다
  */
 export async function chatJSON<T>(opts: ChatJSONOptions): Promise<T> {
   if (!hasLlmKey()) throw new Error("DEEPSEEK_API_KEY_MISSING");
 
+  const startedAt = Date.now();
   let model = modelCache.get(opts.model) ?? opts.model;
-  let useJsonMode = true;
-  let res = await callOnce(opts, model, useJsonMode);
+  const flags: CallFlags = { json: true, noThink: opts.thinking === false };
+  let res = await callHedged(opts, model, flags);
 
-  for (let attempt = 0; attempt < 2 && !res.ok; attempt++) {
+  for (let attempt = 0; attempt < 3 && !res.ok; attempt++) {
     const detail = await res.clone().text().catch(() => "");
-    if (useJsonMode && (res.status === 400 || res.status === 422) && !/model/i.test(detail)) {
-      useJsonMode = false;
+    const badRequest = (res.status === 400 || res.status === 422) && !/model/i.test(detail);
+    if (badRequest && flags.noThink) {
+      flags.noThink = false; // 추론 끄기 옵션을 모르는 서버
+    } else if (badRequest && flags.json) {
+      flags.json = false; // JSON 모드를 모르는 서버
     } else if (isModelRejected(res.status, detail)) {
       const alt = pickModel(await listModels(), model);
       if (!alt || alt === model) break;
@@ -150,7 +240,7 @@ export async function chatJSON<T>(opts: ChatJSONOptions): Promise<T> {
     } else {
       break;
     }
-    res = await callOnce(opts, model, useJsonMode);
+    res = await callOnce(opts, model, flags);
   }
 
   if (!res.ok) {
@@ -158,14 +248,60 @@ export async function chatJSON<T>(opts: ChatJSONOptions): Promise<T> {
     throw new Error(`LLM_${res.status}: ${detail.slice(0, 200)}`);
   }
 
+  let parsed = await readCompletion(res);
+
+  // 추론(생각) 토큰이 한도를 다 써서 본문이 비었으면 한도를 2배로 늘려 1회 재시도
+  if (!parsed.content.trim() && parsed.finishReason === "length") {
+    const bigger = Math.min((opts.maxTokens ?? 600) * 2, 8000);
+    console.warn(
+      `[llm] empty content at max_tokens=${opts.maxTokens ?? 600} (reasoning=${parsed.reasoningChars} chars) → retry with ${bigger}`
+    );
+    const retry = await callOnce({ ...opts, maxTokens: bigger }, model, flags);
+    if (retry.ok) parsed = await readCompletion(retry);
+  }
+
+  statsLog.push({
+    model,
+    ms: Date.now() - startedAt,
+    finishReason: parsed.finishReason,
+    contentChars: parsed.content.length,
+    reasoningChars: parsed.reasoningChars,
+    completionTokens: parsed.completionTokens,
+    reasoningTokens: parsed.reasoningTokens,
+  });
+  if (statsLog.length > 50) statsLog.splice(0, statsLog.length - 50);
+
+  try {
+    return parseJSONLoose<T>(parsed.content);
+  } catch {
+    throw new LlmJsonError(parsed.content, parsed.finishReason, parsed.reasoningChars);
+  }
+}
+
+async function readCompletion(res: Response): Promise<{
+  content: string;
+  finishReason: string | null;
+  reasoningChars: number;
+  completionTokens: number | null;
+  reasoningTokens: number | null;
+}> {
   const data = (await res.json()) as {
-    choices?: { message?: { content?: string }; finish_reason?: string }[];
+    choices?: {
+      message?: { content?: string | null; reasoning_content?: string | null; reasoning?: string | null };
+      finish_reason?: string;
+    }[];
+    usage?: {
+      completion_tokens?: number;
+      completion_tokens_details?: { reasoning_tokens?: number };
+    };
   };
   const choice = data.choices?.[0];
-  const content = choice?.message?.content ?? "";
-  try {
-    return parseJSONLoose<T>(content);
-  } catch {
-    throw new LlmJsonError(content, choice?.finish_reason ?? null);
-  }
+  const reasoning = choice?.message?.reasoning_content ?? choice?.message?.reasoning ?? "";
+  return {
+    content: choice?.message?.content ?? "",
+    finishReason: choice?.finish_reason ?? null,
+    reasoningChars: reasoning.length,
+    completionTokens: data.usage?.completion_tokens ?? null,
+    reasoningTokens: data.usage?.completion_tokens_details?.reasoning_tokens ?? null,
+  };
 }

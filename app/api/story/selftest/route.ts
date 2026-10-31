@@ -7,10 +7,11 @@
 //   seed=friend|school|sibling|fear|new_place|none   씨앗 프리셋 (기본 friend)
 //   short=1   심사용 짧은 회차(3턴)
 //   ep2=0     2화 첫 턴 생략
+//   extra={"..."}  (개발 서버 전용 실험) LLM 요청 본문에 덧붙일 JSON. 예: 추론 끄기 옵션 시험
 import type { SeedPreset } from "@/types";
 import { loadEpisodeContext, saveTurn } from "@/lib/story/contextStore";
 import { finalizeEpisode } from "@/lib/story/finalizeEpisode";
-import { STORY_MODEL, REPORT_MODEL } from "@/lib/story/llm";
+import { drainLlmStats, REPORT_MODEL, setLlmExtraBody, STORY_MODEL } from "@/lib/story/llm";
 import { generateTurn, splitSentences } from "@/lib/story/storyEngine";
 
 export const runtime = "nodejs";
@@ -44,6 +45,19 @@ export async function GET(request: Request) {
   const runEp2 = url.searchParams.get("ep2") !== "0";
 
   // 메모리 모드 회차 ID: 끝 숫자만 다르면 같은 가짜 세계를 공유 (mock-xxxx-1 → mock-xxxx-2)
+  // 실험용 요청 본문 덧붙이기 (이 요청 동안만)
+  let extra: Record<string, unknown> | null = null;
+  const extraParam = url.searchParams.get("extra");
+  if (extraParam) {
+    try {
+      extra = JSON.parse(extraParam) as Record<string, unknown>;
+    } catch {
+      return Response.json({ ok: false, error: "extra는 JSON이어야 합니다." }, { status: 400 });
+    }
+  }
+  setLlmExtraBody(extra);
+  drainLlmStats();
+
   const tag = randomTag();
   const ep1 = `mock-${tag}-1`;
   const ep2 = `mock-${tag}-2`;
@@ -78,6 +92,7 @@ export async function GET(request: Request) {
         endingReason: turn.endingReason,
         childName: turn.childName,
         ms: Date.now() - t0,
+        llm: drainLlmStats(),
       });
       if (turn.shouldEnd) {
         endReason = turn.endingReason;
@@ -88,6 +103,7 @@ export async function GET(request: Request) {
     const f0 = Date.now();
     const finish = await finalizeEpisode(ep1, endReason);
     const finishMs = Date.now() - f0;
+    const finishLlm = drainLlmStats();
 
     let episode2: unknown = null;
     if (runEp2) {
@@ -100,19 +116,22 @@ export async function GET(request: Request) {
         sentences: splitSentences(turn.narration),
         choices: turn.choices,
         ms: Date.now() - t0,
+        llm: drainLlmStats(),
       };
     }
 
+    setLlmExtraBody(null);
     return Response.json({
       ok: true,
       models: { story: STORY_MODEL, report: REPORT_MODEL },
-      config: { seed, short, lines: childLines },
+      config: { seed, short, lines: childLines, extra },
       turns,
-      finish: { ms: finishMs, ...finish },
+      finish: { ms: finishMs, llm: finishLlm, ...finish },
       episode2,
       totalMs: Date.now() - started,
     });
   } catch (err) {
+    setLlmExtraBody(null);
     return Response.json(
       { ok: false, error: String(err), turns, totalMs: Date.now() - started },
       { status: 500 }

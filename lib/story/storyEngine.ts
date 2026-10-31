@@ -48,19 +48,20 @@ export function splitSentences(text: string): string[] {
   return parts.map((s) => s.trim()).filter(Boolean);
 }
 
-const FALLBACK_QUESTION = "대장님은 어떻게 하고 싶어?";
+const FALLBACK_QUESTION = "대장님은 어떻게 하고 싶어요?";
 const SENTENCE_END = /[.!?…~。！？]["'”’)]*$/;
 
 /**
  * TTS용 내레이션 다듬기: 잘린 마지막 문장 제거, 최대 3문장, (진행 턴이면) 질문으로 끝나게.
- * 4문장 이상이면 앞 2문장 + 마지막 질문을 남긴다.
+ * 4문장 이상이면 첫 문장 + 마지막 두 문장(질문 포함)을 남긴다.
  */
 export function trimNarration(text: string, isEnding: boolean): string {
   let parts = splitSentences(text);
   if (parts.length > 1 && !SENTENCE_END.test(parts[parts.length - 1])) parts = parts.slice(0, -1);
   if (parts.length > 3) {
     const last = parts[parts.length - 1];
-    parts = /\?["'”’)]*$/.test(last) ? [parts[0], parts[1], last] : parts.slice(0, 3);
+    // 마지막 질문이 바로 앞 문장을 가리키는 경우가 많아(예: "그건 무엇일까요?") 첫 문장 + 마지막 두 문장을 남긴다
+    parts = /\?["'”’)]*$/.test(last) ? [parts[0], ...parts.slice(-2)] : parts.slice(0, 3);
   }
   if (!isEnding && !parts.some((s) => /\?["'”’)]*$/.test(s))) {
     parts = [...parts.slice(0, 2), FALLBACK_QUESTION];
@@ -170,6 +171,8 @@ export async function generateTurn(input: GenerateTurnInput): Promise<GeneratedT
         maxTokens: 600,
         temperature: 0.8,
         timeoutMs: 12000,
+        thinking: false, // 실시간 대화: 추론을 끄고 빠르게
+        hedgeAfterMs: 2500, // 2.5초 안에 답이 없으면 같은 요청을 하나 더 보내 먼저 온 답을 씀
       });
     } catch (err) {
       const salvaged = err instanceof LlmJsonError ? salvageTurn(err.raw) : null;
