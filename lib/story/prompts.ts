@@ -142,6 +142,16 @@ function isRepeat(p: StoryPromptInput): boolean {
   const prev = p.history[p.history.length - 1]?.childText ?? "";
   return Boolean(prev) && compact(prev) === compact(p.childText) && compact(p.childText).length > 0;
 }
+// '뭐?'·'What?'처럼 못 알아들은 반응 (물음표가 있어도 아이의 질문이 아니다)
+const CONFUSED_WORD = /^(뭐라고|뭐라구|다시|다시\s*말해\s*(줘|줄래)?|못\s*들었어|what|huh|pardon|왓)$/i;
+const CONFUSED_Q = /^(뭐|응|어|네|엥|잉|으응)$/;
+function isConfused(text: string): boolean {
+  const t = text.trim();
+  const core = t.replace(/[?!.~…\s]+$/, "").trim();
+  return CONFUSED_WORD.test(core) || (/\?\s*$/.test(t) && CONFUSED_Q.test(core));
+}
+// '어려워'·'힘들어': 더 묻지 말고 같이 해 준다
+const TOO_HARD = /(어려워|어렵|힘들어|힘들다|못\s*하겠|못하겠)/;
 const CHILD_ASKED = /(\?|뭐야|몇\s*살|어디야|누구야|왜\s|왜$|뭐\s*좋아|좋아해\??$)/;
 const FEELING = /(무서워|무서운\s*거|무섭|슬퍼|슬프|보고\s*싶어|외로워|울고\s*싶|울었|무섭다)/;
 // 회차 길이(리드 확정: 최소 7턴, 최대 15턴)에 맞춘 단계:
@@ -164,7 +174,7 @@ export function questionPlan(p: StoryPromptInput): string {
     ? " 질문은 한 문장으로 짧게, 예시 두 개를 붙인다: '○○할까용, △△할까용?' choices도 그 두 예시로 한다."
     : " 예시 답은 말로 붙이지 말고 choices에만 넣는다.";
   const parts: string[] = [];
-  if (p.turnIndex > 0 && CHILD_ASKED.test(text)) {
+  if (p.turnIndex > 0 && CHILD_ASKED.test(text) && !isConfused(text)) {
     parts.push("아이가 질문을 했다. 먼저 이야기 용으로서 한 문장으로 다정하게 답해 준다.");
   }
 
@@ -185,6 +195,14 @@ export function questionPlan(p: StoryPromptInput): string {
       p.memory
         ? `${p.planetProgress?.visits ? "이 별에 다시 왔다. 지난번 이 별에서 아이가 한 일(시즌 줄거리 참고)을 한 문장으로 반갑게 떠올린 뒤, " : worldIntro(p)}${p.arcHook ? `오늘 밤의 곤란을 보여 준다: ${p.arcHook} 그다음 ` : `오늘 밤 ${p.arcGoal ? `'${p.arcGoal}'을(를) 향해 ` : ""}`}무엇부터 할지 두 가지 보기로 묻는다('A할까용, 아니면 B할까용?').`
         : `${signalHint(p)} 어디선가 그 소리로 누군가 도와 달라고 한다는 걸 들려준 뒤, 누구일지 짧은 한 문장으로 묻는다: '○○일까용, 아니면 △△일까용?'`
+    );
+  } else if (p.turnIndex > 0 && isConfused(text)) {
+    parts.push(
+      "아이가 방금 말을 잘 못 알아들었다('뭐?'). 아이 말('뭐?', 'What?')을 이야기 속 사건으로 만들지 않는다. 방금 장면을 아주 쉬운 말 한 문장으로 다시 들려주고, 같은 질문을 더 짧게, 보기 두 개를 말로 붙여 다시 묻는다('A일까용, 아니면 B일까용?'). 이번 턴은 새 사건 없이 이것만 한다(3문장 이내)."
+    );
+  } else if (p.turnIndex > 0 && TOO_HARD.test(text)) {
+    parts.push(
+      "아이가 어렵다고 했다. 같은 놀이를 또 시키거나 새 문제를 내지 않는다. 이야기 용과 단짝 친구가 먼저 해 보이고(예: 용이 먼저 주문을 외쳐 봄), 아이는 아주 쉬운 한 마디만 같이 하게 한다('하나, 둘, 셋 하고 같이 외쳐 줄래용?'). 그 한 마디로 오늘 밤 목표가 한 걸음 풀리게 그린다."
     );
   } else if (p.turnIndex > 0 && (!text || MINIMAL.test(compact(text)) || DONT_KNOW.test(text))) {
     // '몰라' 사다리: ① 쉬운 힌트로 다시 → ② 두 가지 보기 → ③ 용이 먼저 상상을 말해 주고 진행
@@ -231,7 +249,7 @@ export function questionPlan(p: StoryPromptInput): string {
     parts.push(
       theme.id === "forest"
         ? "방금 나온 인물이나 물건에 아직 이름이 없으면 아이가 이름을 지어 주게 묻는다('이 나무 이름을 뭐라고 지어 줄까용?'). 이미 이름이 있으면 생김새를 아이가 정하게 묻는다('지붕은 무슨 모양일까용?')."
-        : `이 별다운 질문을 한다(질문 방식 참고). 방금 나온 인물에 이름이 없으면 이름을 지어 주게 해도 좋다.${theme.id === "waterfire" ? " 물불 행성이면 한쪽 친구의 마음을 묻는다('물방울 친구는 왜 속상했을까용?')." : theme.id === "upside" ? " 거꾸로 행성이면 쉬운 낱말의 반대말이나 거꾸로 주문을 아이가 말하게 한다." : " 숨은 무지개 행성이면 무엇에 무슨 색을 칠할지, 또는 두 색을 섞으면 무슨 색이 될지 묻는다."}`
+        : `이 별다운 질문을 한다(질문 방식 참고). 방금 나온 인물에 이름이 없으면 이름을 지어 주게 해도 좋다.${theme.id === "waterfire" ? " 물불 행성이면 한쪽 친구의 마음을 묻는다('물방울 친구는 왜 속상했을까용?')." : theme.id === "upside" ? " 거꾸로 행성이면 아이만의 거꾸로 주문을 짓게 한다(맞는 반대말을 고르게 하지 않는다)." : " 숨은 무지개 행성이면 무엇에 무슨 색을 칠할지, 또는 두 색을 섞으면 무슨 색이 될지 묻는다."}`
     );
   } else if (p.turnIndex % 2 === 0) {
     parts.push(
@@ -270,7 +288,7 @@ function turnInstruction(p: StoryPromptInput): string {
     case "safety":
       return `아이가 방금 현실에서 누가 때렸다거나, 다쳤다거나, 사라지고 싶다는 식의 말을 했다. 이야기로 덮고 넘어가지 말고 먼저 1~2문장으로 다정하게 받아 준다: 그런 일이 있었다면 ${p.childName ? `${p.childName} 잘못이` : "네 잘못이"} 아니고, 믿을 수 있는 어른(선생님이나 가까운 어른)에게 꼭 이야기하면 좋겠다고 말한다. 무슨 일이었는지 캐묻지 않는다. 그다음 포근하고 안전한 장면 한 문장으로 이어가고, 쉬운 보기 두 개로 묻는 부담 없는 질문 하나로 끝낸다. 겁주거나 판단하지 않는다.`;
     case "seed":
-      return `이번 턴에 아래 장면을 자연스럽게 넣어라. 아이의 방금 말을 먼저 짧게 받아 준 뒤 장면으로 들어간다. 지금까지 나온 인물·장소를 그대로 쓰고, 갑자기 다른 곳으로 장면을 바꾸지 않는다. 이 장면이 처음에 도와 달라고 한 이유가 되게 잇는다(예: '그래서 도와 달라고 했던 거예용.'). narration은 아이 말의 결과 1문장 + 장면 2문장 + 질문 1문장, 모두 4~5문장. 장면 속 두 갈래를 "A할까용, 아니면 B할까용?" 한 문장으로 짧게 묻고 끝낸다(그 앞에 '무엇을 할까용?' 같은 질문을 따로 붙이지 않는다). 정할 거리가 이름·모양·방법이면 "뭐라고 불러 줄까용?"처럼 열린 질문으로 물어도 된다. choices는 그 두 갈래(또는 대답 예시 두 개)로 한다. 아이가 다른 생각을 말하면 그쪽이 우선이다. 현실을 묻지 말 것.\n장면: ${p.seedDirective}`;
+      return `이번 턴에 아래 장면을 자연스럽게 넣어라. 아이의 방금 말을 먼저 짧게 받아 준 뒤 장면으로 들어간다. 지금까지 나온 인물·장소를 그대로 쓰고, 갑자기 다른 곳으로 장면을 바꾸지 않는다. ${p.arcHook ? "첫 장면에서 이미 보여 준 곤란을 처음인 것처럼 다시 소개하지 말고, 그 곤란을 풀러 한 걸음 더 들어간 장면으로 잇는다. " : "이 장면이 처음에 도와 달라고 한 이유가 되게 잇는다(예: '그래서 도와 달라고 했던 거예용.'). "}narration은 아이 말의 결과 1문장 + 장면 2문장 + 질문 1문장, 모두 4~5문장. 장면 속 두 갈래를 "A할까용, 아니면 B할까용?" 한 문장으로 짧게 묻고 끝낸다(그 앞에 '무엇을 할까용?' 같은 질문을 따로 붙이지 않는다). 정할 거리가 이름·모양·방법이면 "뭐라고 불러 줄까용?"처럼 열린 질문으로 물어도 된다. choices는 그 두 갈래(또는 대답 예시 두 개)로 한다. 아이가 다른 생각을 말하면 그쪽이 우선이다. 현실을 묻지 말 것.\n장면: ${p.seedDirective}`;
     default: {
       const parts: string[] = [];
       if (p.turnIndex === 0) {
