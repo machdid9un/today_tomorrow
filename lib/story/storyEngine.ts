@@ -9,6 +9,7 @@ import { buildStoryMessages, CLOSING_LINE, OPENING_GUEST, type TurnMode } from "
 import { isSafetyConcern } from "./safety";
 import { plotPatternFor } from "./plotPatterns";
 import { resolveSeedDirective } from "./seedPresets";
+import { stageDirective, themeFor } from "./themes";
 
 export { isSafetyConcern };
 
@@ -139,16 +140,16 @@ function endingReasonFor(mode: TurnMode): EndReason | null {
 /** 키가 없을 때(로컬 개발) 쓰는 가짜 턴. 계약 형태는 실제와 동일. */
 function mockTurn(mode: TurnMode, turnIndex: number): RawTurn {
   if (mode.startsWith("ending")) {
-    return { narration: "아기 고래는 친구 덕분에 다시 노래할 수 있게 됐어용.", choices: [] };
+    return { narration: "색깔 친구는 친구 덕분에 다시 반짝일 수 있게 됐어용.", choices: [] };
   }
   if (mode === "seed") {
     return {
-      narration: "아기 고래가 지느러미를 다쳐서 천천히 헤엄쳐용. 그런데 저 멀리 배가 떠나려고 해용. 고래 곁에 남을까용, 아니면 배를 탈까용?",
-      choices: ["곁에 남을래", "배 탈래"],
+      narration: "까꿍, 빨강 친구가 어딘가에 숨었어용. 사과 나무 뒤일까용, 아니면 노을 언덕일까용?",
+      choices: ["사과 나무", "노을 언덕"],
     };
   }
   return {
-    narration: `(${turnIndex}턴) 철썩철썩 파도 소리가 들려용. 저 멀리 아기 고래가 꼬리를 흔들고 있어용. 고래한테 뭐라고 말해 볼까용?`,
+    narration: `(${turnIndex}턴) 사르륵, 흐릿한 빛이 깜빡여용. 저 멀리 무지개 새가 날개를 흔들고 있어용. 무지개 새한테 뭐라고 말해 볼까용?`,
     choices: ["안녕 할래", "숨어서 볼래"],
     childName: turnIndex === 1 ? "지우" : null,
   };
@@ -163,13 +164,20 @@ export async function generateTurn(input: GenerateTurnInput): Promise<GeneratedT
     return { narration: OPENING_GUEST, choices: [], shouldEnd: false, endingReason: null, childName: null };
   }
 
-  // 2) 모드 결정 (코드가 판정). 갈림길 장면은 부모 씨앗이 우선이고, 없으면 회차별 고전 동화 뼈대를 쓴다.
+  // 2) 모드 결정 (코드가 판정).
+  // 갈림길 장면 = 오늘의 별 시즌 단계(예: 숨은 무지개의 오늘 찾을 색). 부모 씨앗이 있으면 그 '마음 주제'를 이 별 장면에 녹인다.
+  // 시즌을 다 끝낸 별이면 회차별 고전 동화 뼈대를 이 별에 맞게 쓴다.
+  const theme = themeFor(ctx.episodeId, ctx.themeId);
+  const planetProgress = ctx.planets[theme.id] ?? null;
+  const arc = stageDirective(theme, planetProgress, plotPatternFor(ctx.episodeId));
   let mode = decideMode(input, true);
-  const seedDirective =
-    mode === "seed"
-      ? (ctx.seedPreset ? await resolveSeedDirective(ctx.seedPreset, ctx.seedText) : null) ??
-        plotPatternFor(ctx.episodeId).directive
-      : null;
+  let seedDirective: string | null = null;
+  if (mode === "seed") {
+    const parentSeed = ctx.seedPreset ? await resolveSeedDirective(ctx.seedPreset, ctx.seedText) : null;
+    seedDirective = parentSeed
+      ? `${parentSeed}\n이 장면은 ${theme.planet}에서 일어나고, 오늘 밤의 목표('${arc.goal}')로 가는 길에 생긴 일로 잇는다. 두 갈래 질문은 위 마음 주제의 갈림길로 한다.`
+      : arc.directive;
+  }
   if (mode === "seed" && !seedDirective) mode = "normal";
   const canSuggestEnd = !input.short && mode === "normal" && elapsedSeconds >= SOFT_LIMIT_SEC;
 
@@ -196,10 +204,11 @@ export async function generateTurn(input: GenerateTurnInput): Promise<GeneratedT
           short: input.short,
           afterSeed: turnIndex === (input.short ? SHORT_SEED_TURN : SEED_TURN) + 1,
           episodeKey: ctx.episodeId,
-          plotResolve:
-            !ctx.seedPreset && turnIndex > (input.short ? SHORT_SEED_TURN : SEED_TURN)
-              ? plotPatternFor(ctx.episodeId).resolve
-              : undefined,
+          // 갈림길 다음 턴부터: 오늘의 별 시즌 단계의 해결 방향 (부모 씨앗이 있어도 오늘의 목표는 풀리게)
+          plotResolve: turnIndex > (input.short ? SHORT_SEED_TURN : SEED_TURN) ? arc.resolve : undefined,
+          themeId: theme.id,
+          planetProgress,
+          arcGoal: arc.goal,
         }),
         maxTokens: 600,
         temperature: 0.8,

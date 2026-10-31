@@ -4,6 +4,7 @@
 // - isLikelySttHallucination: 조용하거나 시끄러울 때 STT가 지어내는 문장("시청해 주셔서 감사합니다" 등)을 걸러 낸다.
 import { loadEpisodeContext } from "./contextStore";
 import { splitSentences } from "./storyEngine";
+import { STT_COMMON_CORE, STT_COMMON_MORE, STT_NAME_HINTS, isNameQuestion } from "./sttVocab";
 import { themeFor, themeSttWords } from "./themes";
 
 const HALLUCINATION_PATTERNS: RegExp[] = [
@@ -49,13 +50,14 @@ export async function buildSttPrompt(
   if (!episodeId) return base;
   try {
     const ctx = await loadEpisodeContext(episodeId);
-    const theme = themeFor(episodeId, themeId);
+    const theme = themeFor(episodeId, themeId ?? ctx.themeId);
     const last = ctx.history[ctx.history.length - 1]?.narration ?? "";
     const question = splitSentences(last).filter((s) => /\?/.test(s)).pop() ?? "";
     const names = [
       ctx.childName ? `${ctx.childName}` : "",
       ...(ctx.memory?.characters ?? []),
       ...(ctx.memory?.items ?? []),
+      ...(ctx.planets[theme.id]?.collected ?? []).slice(-4), // 아이가 이 별에서 지은 이름·주문
     ]
       .map((s) => s.replace(/\(.*?\)/g, "").trim())
       .filter(Boolean)
@@ -81,7 +83,9 @@ export async function buildSttPrompt(
 
 /**
  * ElevenLabs Scribe v2용 keyterms(낱말 목록). 배치: 최대 1,000개·각 50자·5단어 / 실시간: 최대 50개·각 20자.
- * 우선순위: 화면 보기 → 아이 이름·지은 이름 → 테마 낱말. realtime=true면 실시간 한도에 맞춘다.
+ * 우선순위: 화면 보기 → (이름 묻는 턴이면) 흔한 이름 → 아이 이름·지난 이야기 인물·아이가 이 별에서 지은 이름
+ *          → 이 별의 핵심 낱말 → 공통 대답 → 이 별의 그 밖 낱말 → 공통 그 밖.
+ * 한 글자 낱말('위', '김', '꽃')은 엉뚱한 곳에 끼어들 수 있어 빼고, 프롬프트(buildSttPrompt)에서만 쓴다.
  */
 export async function buildSttKeyterms(
   episodeId: string | null | undefined,
@@ -89,22 +93,26 @@ export async function buildSttKeyterms(
   themeId?: string | null,
   realtime = false
 ): Promise<string[]> {
-  const maxCount = realtime ? 50 : 100;
+  const maxCount = realtime ? 50 : 150;
   const maxLen = realtime ? 20 : 50;
   const terms: string[] = [...choices];
+  let theme = themeFor(episodeId ?? "", themeId);
   try {
     if (episodeId) {
       const ctx = await loadEpisodeContext(episodeId);
+      theme = themeFor(episodeId, themeId ?? ctx.themeId);
+      const last = ctx.history[ctx.history.length - 1]?.narration ?? "";
+      if (isNameQuestion(last)) terms.push(...STT_NAME_HINTS);
       if (ctx.childName) terms.push(ctx.childName);
       terms.push(...(ctx.memory?.characters ?? []), ...(ctx.memory?.items ?? []));
-      terms.push(...themeSttWords(themeFor(episodeId, themeId)));
+      terms.push(...(ctx.planets[theme.id]?.collected ?? []));
     }
   } catch {
-    /* 맥락을 못 읽어도 보기만으로 진행 */
+    /* 맥락을 못 읽어도 보기·별 낱말로 진행 */
   }
-  terms.push("이야기 용", "용", "우리별");
+  terms.push(...themeSttWords(theme, true), ...STT_COMMON_CORE, ...themeSttWords(theme), ...STT_COMMON_MORE);
   const clean = terms
     .map((t) => t.replace(/\(.*?\)/g, "").replace(/[.?!,]/g, "").trim())
-    .filter((t) => t && t.length <= maxLen && t.split(/\s+/).length <= 5);
+    .filter((t) => t.replace(/\s/g, "").length >= 2 && t.length <= maxLen && t.split(/\s+/).length <= 5);
   return [...new Set(clean)].slice(0, maxCount);
 }

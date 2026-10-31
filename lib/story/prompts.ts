@@ -4,7 +4,7 @@ import type { StoryMemory } from "@/types";
 import type { ChatMessage } from "./llm";
 import { DRAGON_NAME, vocative } from "./persona";
 import { hasPersonalInfo } from "./safety";
-import { pickFromTheme, themeContext, themeFor } from "./themes";
+import { pickFromTheme, themeContext, themeFor, type PlanetProgress } from "./themes";
 
 /** 게스트 1화 첫 멘트. LLM 없이 즉시 재생. (팀 확정: 이야기 용, '~용' 말투, 무전기 콘셉트 없음) */
 export const OPENING_GUEST = "안녕! 나는 이야기 용이에용. 내 귀가 쫑긋! 네 이름을 알려 줄래용?";
@@ -30,6 +30,7 @@ export const STORY_SYSTEM_PROMPT = `너는 '상상 무전기'의 주인공 '${DR
 규칙:
 1. narration은 2~3문장. 한 문장은 짧게(40자 이내).
 2. 아이가 한 말을 반드시 이야기에 반영한다. 아이가 말한 낱말을 이야기 문장 안에서 그대로 되살려 쓰고(아이 "반창고 붙여줄래" → "반창고를 살며시 붙여 주었어용"), 거기에 한 가지를 덧붙여 이야기를 한 걸음 넓힌다.
+   아이의 말은 오늘의 별에 눈에 보이는 변화를 일으킨다(이름을 지어 주면 나무가 반짝, 색을 말하면 그 색으로 물듦, 주문을 외치면 비가 거꾸로). 정답은 없다. 엉뚱한 대답일수록 더 재미있는 변화로 받는다.
    "~했군용", "~라고 했죵" 같은 확인 말투로 매번 시작하지 않는다. "괜찮아용"을 매 턴 되풀이하지 않는다.
    아이 말을 평가·칭찬·정정하지 않는다("잘했어용", "멋지다", "귀여운 이름이에용", "틀렸어" 금지). 이야기로만 받는다.
 3. narration은 이야기 1~2문장 + 마지막에 아이에게 묻는 질문 1개다. 한 턴에 질문은 하나만이고, 이야기 문장 중간에 '그건 무엇일까용?' 같은 혼잣말 질문도 쓰지 않는다. 질문 방식은 [이번 턴 질문] 지시를 따른다.
@@ -67,8 +68,12 @@ export interface StoryPromptInput {
   episodeKey?: string;
   /** 부모 씨앗이 없는 회차: 갈림길 이후 고전 동화 뼈대의 해결 방향 */
   plotResolve?: string;
-  /** 오늘의 별(행성 테마). 아이가 지도에서 고른 별(forest|sea|candy|night). 없으면 episodeKey로 고정 선택 */
+  /** 오늘의 별(행성 테마). 아이가 지도에서 고른 별(forest|waterfire|upside|rainbow). 없으면 episodeKey로 고정 선택 */
   themeId?: string | null;
+  /** 이 별의 시즌 진행 (지난 방문까지) */
+  planetProgress?: PlanetProgress | null;
+  /** 오늘 밤 시즌 목표 한 줄 (예: '숨은 빨강 친구 찾기'). 첫 장면의 '도와 달라는 소리'가 여기로 이어진다 */
+  arcGoal?: string;
 }
 
 function signalHint(p: StoryPromptInput): string {
@@ -77,7 +82,8 @@ function signalHint(p: StoryPromptInput): string {
   const a = pickFromTheme(theme.characters, p.episodeKey, 17);
   const rest = theme.characters.filter((c) => c !== a);
   const b = pickFromTheme(rest, p.episodeKey, 19);
-  return `오늘의 별은 '${theme.planet}', 소리 단서는 '${clue}', 첫 질문의 후보는 '${a}'와 '${b}'다(그대로 베끼지 말고 자연스럽게 녹인다. 후보가 단서와 어울리지 않으면 이 별의 친구 중 어울리는 것으로 바꿔도 된다).`;
+  const goal = p.arcGoal ? ` 오늘 밤의 목표는 '${p.arcGoal}'이고, 도와 달라는 소리는 이 목표와 이어진다(목표를 미리 다 말하지 말고 궁금하게 남긴다).` : "";
+  return `오늘의 별은 '${theme.planet}'(첫 장면에서 별 이름을 한 번 말한다), 소리 단서는 '${clue}', 첫 질문의 후보는 '${a}'와 '${b}'다(그대로 베끼지 말고 자연스럽게 녹인다. 후보가 단서와 어울리지 않으면 이 별의 친구 중 어울리는 것으로 바꿔도 된다).${goal}`;
 }
 
 const DONT_KNOW = /(몰라|모르겠|모르겟|글쎄|몰루|모름)/;
@@ -134,7 +140,7 @@ export function questionPlan(p: StoryPromptInput): string {
   } else if (p.turnIndex === 0) {
     parts.push(
       p.memory
-        ? "지난 이야기의 친구와 오늘 밤 무엇을 할지, 두 가지 보기로 묻는다('A할까용, 아니면 B할까용?')."
+        ? `${p.planetProgress?.visits ? "이 별에 다시 왔다. 지난번 이 별에서 아이가 한 일(시즌 줄거리 참고)을 한 문장으로 반갑게 떠올린 뒤, " : ""}오늘 밤 ${p.arcGoal ? `'${p.arcGoal}'을(를) 향해 ` : ""}무엇을 할지, 두 가지 보기로 묻는다('A할까용, 아니면 B할까용?').`
         : `${signalHint(p)} 어디선가 그 소리로 누군가 도와 달라고 한다는 걸 들려준 뒤, 누구일지 짧은 한 문장으로 묻는다: '○○일까용, 아니면 △△일까용?'`
     );
   } else if (p.turnIndex > 0 && (!text || MINIMAL.test(compact(text)) || DONT_KNOW.test(text))) {
@@ -158,14 +164,17 @@ export function questionPlan(p: StoryPromptInput): string {
       "이제 잠잘 시간 쪽으로 이야기를 천천히 가라앉힌다. 처음에 도와 달라고 한 일이 아직 안 풀렸으면 이번에 아이 덕분에 풀리게 한다. 새 위험이나 큰 사건은 만들지 않는다. 별빛·바람 소리 같은 조용한 장면 뒤에, 친구에게 해 줄 말이나 함께 보고 싶은 것처럼 포근하고 짧은 질문 하나를 한다(보기를 말로 늘어놓지 않는다)."
     );
   } else if (p.turnIndex === 2) {
+    const theme = themeFor(p.episodeKey, p.themeId);
     parts.push(
-      "방금 나온 인물이나 물건에 아직 이름이 없으면 아이가 이름을 지어 주게 묻는다('이 친구 이름을 뭐라고 지어 줄까용?'). 이미 이름이 있으면 생김새나 좋아하는 것을 묻는다('무슨 색 날개를 가졌을까용?')."
+      theme.id === "forest"
+        ? "방금 나온 인물이나 물건에 아직 이름이 없으면 아이가 이름을 지어 주게 묻는다('이 나무 이름을 뭐라고 지어 줄까용?'). 이미 이름이 있으면 생김새를 아이가 정하게 묻는다('지붕은 무슨 모양일까용?')."
+        : `이 별다운 질문을 한다(질문 방식 참고). 방금 나온 인물에 이름이 없으면 이름을 지어 주게 해도 좋다.${theme.id === "waterfire" ? " 물불 행성이면 한쪽 친구의 마음을 묻는다('물방울 친구는 왜 속상했을까용?')." : theme.id === "upside" ? " 거꾸로 행성이면 쉬운 낱말의 반대말이나 거꾸로 주문을 아이가 말하게 한다." : " 숨은 무지개 행성이면 무엇에 무슨 색을 칠할지, 또는 두 색을 섞으면 무슨 색이 될지 묻는다."}`
     );
   } else if (p.turnIndex % 2 === 0) {
     parts.push(
       young
-        ? `누가·무엇이·어디 중 하나를 묻는 열린 질문으로, 아이가 새 인물·물건·장소를 직접 만들어 넣게 한다.${withExamples}`
-        : "누가·무엇이·어디를 묻거나, '○○라면 지금 어떤 기분일까용?'처럼 이야기 속 인물의 마음을 묻는 열린 질문을 한다."
+        ? `이 별의 놀이(질문 방식 참고)로, 아이가 새 이름·모양·색·말을 직접 만들어 넣게 하는 열린 질문을 한다.${withExamples}`
+        : "이 별의 놀이(질문 방식 참고)로 묻되, 가끔은 '왜 그렇게 생각해용?'·'어떻게 하면 될까용?'처럼 아이가 자기 생각을 설명하게 묻는다. 정답을 맞히는 질문은 하지 않는다."
     );
   } else {
     parts.push("이야기가 갈 수 있는 두 갈래를 보여 주고 고르게 한다('A할까용, 아니면 B할까용?').");
@@ -234,7 +243,10 @@ export function buildStoryMessages(p: StoryPromptInput): ChatMessage[] {
 
   const messages: ChatMessage[] = [
     { role: "system", content: STORY_SYSTEM_PROMPT },
-    { role: "system", content: `${profile}${memoryBlock(p.memory)}\n\n${themeContext(themeFor(p.episodeKey, p.themeId))}` },
+    {
+      role: "system",
+      content: `${profile}${memoryBlock(p.memory)}\n\n${themeContext(themeFor(p.episodeKey, p.themeId), p.planetProgress)}`,
+    },
   ];
 
   for (const t of p.history.slice(-10)) {

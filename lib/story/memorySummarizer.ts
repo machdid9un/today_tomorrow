@@ -8,6 +8,7 @@ import { chatJSON, hasLlmKey, REPORT_MODEL, type ChatMessage } from "./llm";
 import { withSubject } from "./persona";
 import { CLOSING_LINE } from "./prompts";
 import { hasPersonalInfo, isSafetyConcern } from "./safety";
+import { progressLine, RAINBOW_COLORS, remainingColors, type PlanetProgress, type StoryTheme } from "./themes";
 
 export interface SummarizeEpisodeInput {
   turns: TurnRecord[];
@@ -15,6 +16,16 @@ export interface SummarizeEpisodeInput {
   prevMemory: StoryMemory | null;
   childName: string | null;
   episodeNumber: number;
+  /** 오늘의 별과 시즌 진행 (없으면 별 정보 없이 정리) */
+  planet?: { theme: StoryTheme; progress: PlanetProgress | null; goal: string; stageId: string } | null;
+}
+
+/** 오늘 이 별에서 생긴 일 (시즌 진행 계산용) */
+export interface PlanetUpdate {
+  /** 숨은 무지개: 오늘 찾은 색 (남은 색 중 하나, 아니면 null) */
+  found: string | null;
+  /** 아이가 이 별에 만든 것·지은 이름·주문 (아이 말에 근거한 것만) */
+  made: string[];
 }
 
 export interface SummarizeEpisodeResult {
@@ -25,6 +36,8 @@ export interface SummarizeEpisodeResult {
   episodeTitle: string;
   /** 알고 있는 이름(입력값 또는 1턴 답에서 찾은 이름). worlds.child_name용. */
   childName: string | null;
+  /** 오늘의 별에서 생긴 일. finalizeEpisode가 시즌 진행(worldMemory.planets)을 계산할 때 쓴다 */
+  planetUpdate?: PlanetUpdate;
 }
 
 const MAX_NAMED = 6; // characters / items / places 각각
@@ -425,6 +438,29 @@ function isGenuineQuote(quote: string, said: string[]): boolean {
   return said.some((s) => s.includes(q) || (s.length >= 2 && q.includes(s)) || bigramOverlap(q, s) >= 0.6);
 }
 
+/** '아이가 만든 것' 목록 중 아이 말에 근거가 있는 것만 남긴다 (괄호 설명은 떼고 비교) */
+export function groundedMade(made: string[], childTexts: string[]): string[] {
+  const said = childTexts.map(normKo).filter(Boolean);
+  return made
+    .map((m) => collapse(m).slice(0, 20))
+    .filter((m) => {
+      const core = normKo(m.replace(/\(.*?\)/g, ""));
+      return core.length >= 1 && said.some((s) => s.includes(core) || (core.length >= 3 && bigramOverlap(core, s) >= 0.6));
+    })
+    .slice(0, 3);
+}
+
+/** 오늘 찾은 색: LLM이 준 값이 남은 색이면 그것, 아니면 갈림길 뒤 이야기 용의 말에 나온 남은 색 중 첫 번째 */
+function detectFoundColor(llmFound: unknown, turns: TurnRecord[], progress: PlanetProgress | null): string | null {
+  const remaining = remainingColors(progress);
+  const v = typeof llmFound === "string" ? llmFound.replace(/색$/, "").trim() : "";
+  const norm: Record<string, string> = { 빨간: "빨강", 노란: "노랑", 파란: "파랑", 주황: "주황", 초록: "초록", 남: "남색", 보라: "보라" };
+  const color = remaining.includes(v) ? v : norm[v] && remaining.includes(norm[v]) ? norm[v] : null;
+  if (color) return color;
+  const later = turns.slice(3).map((t) => textOf(t.narration)).join(" ");
+  return remaining.find((c) => later.includes(c)) ?? null;
+}
+
 const SPEECH = "(?:말했어요|말했지요|대답했어요|외쳤어요|속삭였어요|소리쳤어요|말했답니다)";
 
 function escapeRe(x: string): string {
@@ -514,9 +550,13 @@ function buildSystemPrompt(callName: string): string {
 
 3) islandTitle — 오늘 이야기의 장소 이름(오늘의 별 안의 한 곳). 2~8글자로 귀엽게(예: "반딧불 오두막", "별사탕 언덕").
 4) episodeTitle — 오늘 이야기의 제목. 20자 이내(예: "다친 고래와 떠나는 배").
+5) planetUpdate — [오늘의 별]이 주어졌을 때, 오늘 이 별에서 생긴 일.
+- found: 숨은 무지개 행성에서 오늘 찾은 색깔 친구의 색 이름(빨강·주황·노랑·초록·파랑·남색·보라 중 하나). 다른 별이거나 찾지 못했으면 null.
+- made: 아이가 이 별에 직접 만든 것·지어 준 이름·외친 주문·낸 화해 방법 0~3개. 아이 말 그대로 짧게(예: "뭉게(구름 나무 이름)", "구름 지붕", "올라가 반대로 내려가"). 아이가 하지 않은 것은 넣지 않는다.
+- 동화책에도 오늘의 별 이야기가 살아 있게 쓴다: 첫 문단이나 둘째 문단에 별 이름을 한 번 쓰고, 아이의 말로 이 별이 어떻게 달라졌는지(나무에 이름이 생김, 색이 돌아옴, 두 마을이 웃음, 비가 거꾸로 내림)를 결과 문단에 쓴다. 숨은 무지개에서 색을 찾았으면 결과 문단에 '이제 일곱 색 중 N가지를 찾았어요'(N은 [오늘의 별]에 적힌 수)를 한 번 넣는다.
 
 출력은 아래 형식의 JSON 하나만. 다른 글자 금지.
-{"worldMemory": {"characters": ["..."], "items": ["..."], "places": ["..."], "keyEvents": ["..."], "nextHook": "..."}, "storybookText": "...", "islandTitle": "...", "episodeTitle": "..."}`;
+{"worldMemory": {"characters": ["..."], "items": ["..."], "places": ["..."], "keyEvents": ["..."], "nextHook": "..."}, "storybookText": "...", "islandTitle": "...", "episodeTitle": "...", "planetUpdate": {"found": null, "made": ["..."]}}`;
 }
 
 /**
@@ -550,18 +590,32 @@ function transcriptLines(turns: TurnRecord[], skipNameQA: boolean): string[] {
   return lines;
 }
 
+function planetBlock(planet: SummarizeEpisodeInput["planet"]): string[] {
+  if (!planet) return [];
+  const { theme, progress, goal } = planet;
+  const found = (progress?.collected ?? []).filter((c) => RAINBOW_COLORS.includes(c)).length;
+  return [
+    `[오늘의 별] ${theme.planet} — ${theme.tag}. 놀이: ${theme.play}.`,
+    `시즌 줄거리: ${progressLine(theme, progress)}`,
+    `오늘 밤 목표: ${goal}.${theme.id === "rainbow" && planet.stageId === "find_color" ? ` 오늘 색을 찾았다면 이제 일곱 색 중 ${found + 1}가지를 찾은 것이다.` : ""}`,
+    "",
+  ];
+}
+
 function buildMessages(
   turns: TurnRecord[],
   prev: StoryMemory,
   callName: string,
   episodeNumber: number,
-  skipNameQA: boolean
+  skipNameQA: boolean,
+  planet: SummarizeEpisodeInput["planet"] = null
 ): ChatMessage[] {
   const memoryText = isEmptyMemory(prev) ? "없음 (첫 모험)" : JSON.stringify(prev, null, 2);
   const user = [
     `[아이 이름] ${callName}`,
     `[회차] ${episodeNumber}번째 모험`,
     "",
+    ...planetBlock(planet),
     "[지난 모험의 기억]",
     memoryText,
     "",
@@ -618,13 +672,19 @@ export async function summarizeEpisode(input: SummarizeEpisodeInput): Promise<Su
       islandTitle: `${episodeNumber}번째 별`,
       episodeTitle: `${callName}의 ${episodeNumber}번째 이야기`,
       childName,
+      planetUpdate: input.planet
+        ? {
+            found: input.planet.theme.id === "rainbow" ? detectFoundColor(null, turns, input.planet.progress) : null,
+            made: [],
+          }
+        : undefined,
     };
   }
 
   // 3) LLM 1회 호출. 네트워크·HTTP·JSON 파싱 실패는 그대로 throw.
   const raw = await chatJSON<unknown>({
     model: REPORT_MODEL,
-    messages: buildMessages(turns, prev, callName, episodeNumber, nameAsked),
+    messages: buildMessages(turns, prev, callName, episodeNumber, nameAsked, input.planet ?? null),
     maxTokens: 5000,
     temperature: 0.6,
     timeoutMs: 30000,
@@ -674,5 +734,16 @@ export async function summarizeEpisode(input: SummarizeEpisodeInput): Promise<Su
 
   if (fallbacks.length) console.warn(`[summarizer] LLM 출력 일부 대체: ${fallbacks.join(", ")}`);
 
-  return { worldMemory, storybookText, islandTitle, episodeTitle, childName };
+  let planetUpdate: PlanetUpdate | undefined;
+  if (input.planet) {
+    const pu = isRecord(raw.planetUpdate) ? raw.planetUpdate : {};
+    const childTexts = turns.map((t, i) => (i === skipChildAt ? "" : textOf(t.childText)));
+    const madeRaw = Array.isArray(pu.made) ? pu.made.filter((x): x is string => typeof x === "string") : [];
+    planetUpdate = {
+      found: input.planet.theme.id === "rainbow" ? detectFoundColor(pu.found, turns, input.planet.progress) : null,
+      made: groundedMade(madeRaw, childTexts),
+    };
+  }
+
+  return { worldMemory, storybookText, islandTitle, episodeTitle, childName, planetUpdate };
 }

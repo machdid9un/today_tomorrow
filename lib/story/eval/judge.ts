@@ -3,7 +3,7 @@
 import { chatJSON, REPORT_MODEL, type ChatMessage } from "../llm";
 import type { EvalTurn } from "./metrics";
 
-export const JUDGE_KEYS = ["QA", "QB", "QC", "QD", "QE", "QF", "SA", "SB", "SC", "SD", "SE", "SF"] as const;
+export const JUDGE_KEYS = ["QA", "QB", "QC", "QD", "QE", "QF", "SA", "SB", "SC", "SD", "SE", "SF", "PA"] as const;
 export type JudgeKey = (typeof JUDGE_KEYS)[number];
 
 export const JUDGE_LABELS: Record<JudgeKey, string> = {
@@ -19,6 +19,7 @@ export const JUDGE_LABELS: Record<JudgeKey, string> = {
   SD: "잠드는 곡선",
   SE: "낭독성(문장·해요체)",
   SF: "소리·반복",
+  PA: "행성 놀이·줄거리",
 };
 
 export interface JudgeResult {
@@ -48,9 +49,10 @@ const SYSTEM = `너는 유아 그림책 편집자이자 아동 발달 전문가�
 [SD 잠드는 곡선] 5: 마지막 2문단에 새 사건 없이 문장이 짧아지고 소리·빛이 줄어듦 / 3: 대체로 차분하지만 막판에 큰 소리나 흥분 / 1: 끝까지 긴장
 [SE 낭독성] 5: 문장 대부분 30자 이하, 문단 2~4문장, 해요체 일관(아이의 인용 대사는 원래 말투 그대로 둬도 됨), 같은 어미 3번 연속 없음 / 3: 긴 문장 일부, 어미 단조 / 1: 반말 서술('~했어', '~했지', '~했단다')이 섞이거나 긴 복문이 많음
 [SF 소리·반복] 5: 의성어·의태어가 알맞게(6~10개), 후렴이나 '셋의 묶음'이 있고 후반은 부드러운 소리 / 3: 장치가 있지만 너무 많거나 적음 / 1: 거의 없거나 문장마다 남발
+[PA 행성 놀이·줄거리] [오늘의 별]이 주어졌을 때만 채점(없으면 null). 5: 이 별의 놀이(이름 짓기·화해시키기·반대말·색 섞기 등)를 아이가 직접 하게 묻고, 아이 말이 별에 눈에 보이는 변화를 일으키며(정답 맞히기 없음), 오늘 밤 목표가 첫 장면에서 시작해 끝에서 풀리고, 동화책에도 그 변화가 남음 / 3: 별 분위기는 있지만 놀이나 목표가 약하거나 중간에 사라짐 / 1: 별·놀이와 상관없는 이야기, 또는 정답을 맞히게 함
 
 출력은 JSON 하나만:
-{"scores": {"QA": 1~5, "QB": 1~5, "QC": 1~5, "QD": 1~5, "QE": 1~5 또는 null, "QF": 1~5, "SA": 1~5, "SB": 1~5, "SC": 1~5, "SD": 1~5, "SE": 1~5, "SF": 1~5}, "worst": "가장 큰 문제 한 문장", "fix": "가장 효과가 클 개선점 한 문장"}`;
+{"scores": {"QA": 1~5, "QB": 1~5, "QC": 1~5, "QD": 1~5, "QE": 1~5 또는 null, "QF": 1~5, "SA": 1~5, "SB": 1~5, "SC": 1~5, "SD": 1~5, "SE": 1~5, "SF": 1~5, "PA": 1~5 또는 null}, "worst": "가장 큰 문제 한 문장", "fix": "가장 효과가 클 개선점 한 문장"}`;
 
 // 대화 표기: [이야기 용]·[아이]
 const MODE_LABEL: Record<EvalTurn["mode"], string> = {
@@ -67,6 +69,8 @@ export async function judgeEpisode(input: {
   title: string;
   turns: EvalTurn[];
   storybook: string;
+  /** 오늘의 별·놀이·목표 설명 (PA 채점용) */
+  planet?: string;
 }): Promise<JudgeResult> {
   const t0 = Date.now();
   const transcript = input.turns
@@ -84,7 +88,7 @@ export async function judgeEpisode(input: {
     { role: "system", content: SYSTEM },
     {
       role: "user",
-      content: `[아이 나이] 만 ${input.age}세\n[상황] ${input.title}\n\n[대화]\n${transcript}\n\n[동화책]\n${input.storybook || "(없음)"}\n\n기준표대로 JSON 하나만.`,
+      content: `[아이 나이] 만 ${input.age}세\n[상황] ${input.title}${input.planet ? `\n[오늘의 별] ${input.planet}` : ""}\n\n[대화]\n${transcript}\n\n[동화책]\n${input.storybook || "(없음)"}\n\n기준표대로 JSON 하나만.`,
     },
   ];
   try {

@@ -23,6 +23,8 @@ export interface Observation {
 export type ParentReportOut = ParentReport & {
   observations: Observation[];
   observation: string;
+  /** 오늘의 별 시즌 진행 (부모 화면 진행 막대: done/total, 아이가 모은 것). finalizeEpisode가 붙인다. */
+  planet?: { id: string; planet: string; done: number; total: number; goal: string; collected: string[] };
   /** 다음 씨앗 추천(아이 말 근거 포함). finalizeEpisode가 붙인다. report_json에 함께 저장됨. */
   seedSuggestions?: SeedSuggestion[];
 };

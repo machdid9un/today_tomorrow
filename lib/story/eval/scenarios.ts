@@ -2,6 +2,7 @@
 // lines: turnIndex 1부터 차례로 아이가 할 말. "@"는 '가상 아이'(childSim)가 그 자리에서 대답을 만든다.
 // 첫 줄은 이름 질문(게스트 1화 고정 첫 멘트)에 대한 답이다.
 import type { SeedPreset } from "@/types";
+import { THEMES, type PlanetId, type PlanetProgress } from "../themes";
 
 export interface EvalScenario {
   id: string;
@@ -16,6 +17,26 @@ export interface EvalScenario {
   mustNotContain?: string[];
   /** 동화책에 꼭 들어가야 하는 문자열 (아이가 지은 이름 등) */
   mustContain?: string[];
+  /** 오늘의 별 (없으면 시나리오 순서대로 4개 별을 돌아가며) */
+  theme?: PlanetId;
+  /** 이 별의 지난 진행 (없으면 순서에 따라 첫 방문 또는 시즌 중간) */
+  progress?: PlanetProgress | null;
+}
+
+/** 시즌 중간 상태 예시 (두 번째 바퀴 시나리오에 씀) */
+const MID_SEASON: Record<PlanetId, PlanetProgress> = {
+  forest: { visits: 2, stage: 2, collected: ["뭉게(구름 나무 이름)", "구름 지붕"] },
+  waterfire: { visits: 1, stage: 1, collected: ["꼭 안아 주기"] },
+  upside: { visits: 3, stage: 3, collected: ["내려가라 얍", "작다"] },
+  rainbow: { visits: 3, stage: 0, collected: ["빨강", "주황", "노랑"] },
+};
+
+/** 시나리오의 별과 진행: 순서대로 4개 별을 돌고, 짝수 바퀴는 첫 방문·홀수 바퀴는 시즌 중간 */
+export function scenarioPlanet(sc: EvalScenario): { themeId: PlanetId; progress: PlanetProgress | null } {
+  const idx = Math.max(0, EVAL_SCENARIOS.findIndex((x) => x.id === sc.id));
+  const themeId = sc.theme ?? THEMES[idx % THEMES.length].id;
+  const progress = sc.progress !== undefined ? sc.progress : Math.floor(idx / THEMES.length) % 2 === 1 ? MID_SEASON[themeId] : null;
+  return { themeId, progress };
 }
 
 const S = "@";
