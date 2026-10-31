@@ -13,7 +13,13 @@ import {
   type TurnSentence,
   type VoiceMode,
 } from "./types";
-import { startEnergyVAD } from "./vad";
+import { isMobileDevice, startEnergyVAD } from "./vad";
+
+// 휴대폰은 노트북 내장 마이크보다 입력 레벨이 낮게 들어오는 경우가 많아 같은 기준값이면 말을 잘 못
+// 알아듣는 느낌을 준다. 노트북(데스크톱)은 기존 기준값을 그대로 두고, 휴대폰일 때만 더 낮은 소리에도
+// "말하는 중"으로 잡게 민감도를 올린다(바닥 임계값과 소음 대비 배수를 낮춤). 오탐(소음 과다 반응)이
+// 심하면 이 두 값을 다시 올리면 된다.
+const MOBILE_VAD_OPTIONS = { speechThreshold: 0.02, noiseMultiplier: 1.8 };
 
 export interface UseVoiceAdventureOptions {
   episodeId: string;
@@ -125,6 +131,7 @@ export function useVoiceAdventure({ episodeId, mode, themeId }: UseVoiceAdventur
     if (mode === "handsfree" && streamRef.current && !pttFallbackRef.current) {
       vadRef.current?.stop();
       vadRef.current = startEnergyVAD(streamRef.current, {
+        ...(isMobileDevice() ? MOBILE_VAD_OPTIONS : {}),
         onCalibrated: (effectiveThreshold, noiseFloor) => {
           console.info(
             `[voice] VAD 보정 완료 — 주변 소음 평균 ${noiseFloor.toFixed(4)}, 실제 임계값 ${effectiveThreshold.toFixed(4)}`

@@ -29,6 +29,18 @@ export interface EnergyVAD {
 }
 
 /**
+ * 휴대폰인지 판별(모바일 브라우저는 마이크 입력 레벨이 노트북 내장 마이크보다 낮게 들어오는 경우가
+ * 많아, 같은 기준값으로는 "말을 잘 못 알아듣는" 느낌을 준다). navigator.userAgentData가 있으면
+ * 그걸 먼저 쓰고(더 정확), 없으면 User-Agent 문자열로 판별한다.
+ */
+export function isMobileDevice(): boolean {
+  if (typeof navigator === "undefined") return false;
+  const uaData = (navigator as Navigator & { userAgentData?: { mobile?: boolean } }).userAgentData;
+  if (typeof uaData?.mobile === "boolean") return uaData.mobile;
+  return /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent);
+}
+
+/**
  * stream에 연결해 에너지 기반으로 발화 시작/종료를 감지합니다.
  * stop()을 호출하면 AudioContext를 정리합니다.
  */
