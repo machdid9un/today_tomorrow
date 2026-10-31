@@ -30,7 +30,17 @@ export default function AdventureStage(props: AdventureStageProps) {
 function Stage({ episodeId, mode, themeId, onReset }: AdventureStageProps & { onReset: () => void }) {
   const { phase, errorMessage, choices, narrationLog, start, startRecording, stopRecording, submitChoice, submitText, micAvailable, endManually } = useVoiceAdventure({ episodeId, mode, themeId: themeId ?? undefined });
   const [typed, setTyped] = useState("");
-  const canType = !micAvailable && (phase === "listening" || phase === "error");
+  // 마이크가 없거나, (마이크가 있어도) 못 알아들었는데 고를 버튼이 없을 때 글로 대답할 수 있게
+  const canType = (!micAvailable && (phase === "listening" || phase === "error")) || (phase === "error" && choices.length === 0);
+  const [stopArmed, setStopArmed] = useState(false);
+  const onStopClick = () => {
+    if (stopArmed) {
+      endManually();
+      return;
+    }
+    setStopArmed(true);
+    setTimeout(() => setStopArmed(false), 3000);
+  };
   const sendTyped = () => {
     const v = typed.trim();
     if (!v) return;
@@ -141,12 +151,12 @@ function Stage({ episodeId, mode, themeId, onReset }: AdventureStageProps & { on
         )}
 
         {phase !== "idle" && (
-          <button type="button" className={styles.stopBtn} onClick={endManually}>
-            오늘은 그만할래
+          <button type="button" className={styles.stopBtn} onClick={onStopClick} aria-live="polite">
+            {stopArmed ? "한 번 더 누르면 오늘 이야기가 끝나요" : "오늘은 그만할래"}
           </button>
         )}
 
-        {isMock && (
+        {isMock && typeof window !== "undefined" && new URLSearchParams(window.location.search).get("debug") === "1" && (
           <p className={styles.devLine}>
             연습용 회차 {episodeId} ·{" "}
             <button type="button" onClick={() => window.confirm("지금까지의 대화를 지우고 처음부터 할까요?") && onReset()}>
