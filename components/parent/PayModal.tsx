@@ -11,8 +11,8 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 
 export default function PayModal({ open, onClose }: { open: boolean; onClose: () => void }) {
   const [email, setEmail] = useState("");
-  const [agree, setAgree] = useState(true);
-  const [state, setState] = useState<"form" | "sending" | "done" | "error">("form");
+  const [agree, setAgree] = useState(false); // 동의는 기본 해제(옵트인)
+  const [state, setState] = useState<"form" | "sending" | "done" | "error" | "server">("form");
 
   useEffect(() => {
     if (!open) return;
@@ -37,9 +37,9 @@ export default function PayModal({ open, onClose }: { open: boolean; onClose: ()
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email: v, consent: true }),
       });
-      setState(res.ok ? "done" : "error");
+      setState(res.ok ? "done" : "server");
     } catch {
-      setState("error");
+      setState("server");
     }
   };
 
@@ -87,7 +87,8 @@ export default function PayModal({ open, onClose }: { open: boolean; onClose: ()
               <input type="checkbox" checked={agree} onChange={(e) => setAgree(e.target.checked)} />
               <span>출시 소식과 사전 신청 안내를 이메일로 받을게요</span>
             </label>
-            {state === "error" && <p className={s.fine}>이메일을 확인하고 동의에 체크해 주세요. 잠시 뒤 다시 시도해도 돼요.</p>}
+            {state === "error" && <p className={s.fine}>이메일을 확인하고 수신 동의에 체크해 주세요.</p>}
+            {state === "server" && <p className={s.fine}>지금은 신청을 받지 못했어요. 잠시 뒤 다시 해 주세요.</p>}
             <button type="button" className={s.btn} onClick={submit} disabled={state === "sending"}>
               {state === "sending" ? "보내는 중…" : "이메일로 출시 알림 받기"}
             </button>
