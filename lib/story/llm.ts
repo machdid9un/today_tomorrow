@@ -231,6 +231,14 @@ export async function chatJSON<T>(opts: ChatJSONOptions): Promise<T> {
       flags.noThink = false; // 추론 끄기 옵션을 모르는 서버
     } else if (badRequest && flags.json) {
       flags.json = false; // JSON 모드를 모르는 서버
+    } else if (res.status === 429 || res.status >= 500) {
+      // 분당 요청 한도(429)·일시 오류: Retry-After(최대 4초)나 짧은 지수 대기 후 재시도
+      const retryAfter = Number(res.headers.get("retry-after"));
+      const waitMs = Number.isFinite(retryAfter) && retryAfter > 0
+        ? Math.min(retryAfter * 1000, 4000)
+        : 600 * 2 ** attempt + Math.floor(Math.random() * 400);
+      console.warn(`[llm] ${res.status} → ${waitMs}ms 후 재시도 (${attempt + 1}/3)`);
+      await new Promise((r) => setTimeout(r, waitMs));
     } else if (isModelRejected(res.status, detail)) {
       const alt = pickModel(await listModels(), model);
       if (!alt || alt === model) break;
