@@ -1,12 +1,13 @@
-// 핸즈프리 음성 모험. 소유: 역할 2.
-// 역할 4는 이 폴더를 건드리지 않음(README §6).
+// 핸즈프리 음성 모험. 소유: 역할 2 (화면 겉모습은 역할 4의 AdventureStage, 음성 루프는 역할 2의 useVoiceAdventure).
 //
 // VOICE_MODE는 NEXT_PUBLIC_ 접두사가 없어 브라우저에서 못 읽으므로,
 // 서버 컴포넌트인 여기서 process.env.VOICE_MODE를 읽어 클라이언트 컴포넌트에 prop으로 내려줍니다.
-// episodeId는 /api/sessions 생성 후 쿼리스트링으로 전달된다고 가정합니다.
-// TODO(역할 1·4 확인): episodeId를 쿼리스트링 대신 다른 방식(쿠키/컨텍스트)으로 넘기기로 하면 여기만 바꾸면 됨.
-import VoiceSession from "@/components/voice/VoiceSession";
+// episodeId·themeId는 첫 화면(역할 4)이 /api/sessions 생성 후 쿼리스트링으로 넘깁니다.
+// 예전 화면(components/voice/VoiceSession)은 그대로 남아 있습니다. 되돌리려면 아래 AdventureStage를 VoiceSession으로 바꾸면 됩니다.
+import { redirect } from "next/navigation";
+import AdventureStage from "@/components/kid/AdventureStage";
 import type { VoiceMode } from "@/components/voice/types";
+import { isThemeId } from "@/lib/story/themes";
 
 function resolveVoiceMode(): VoiceMode {
   return process.env.VOICE_MODE === "ptt" ? "ptt" : "handsfree";
@@ -15,23 +16,13 @@ function resolveVoiceMode(): VoiceMode {
 export default async function AdventurePage({
   searchParams,
 }: {
-  searchParams: Promise<{ episodeId?: string }>;
+  searchParams: Promise<{ episodeId?: string; themeId?: string }>;
 }) {
-  const { episodeId } = await searchParams;
+  const { episodeId, themeId } = await searchParams;
   const mode = resolveVoiceMode();
 
-  if (!episodeId) {
-    return (
-      <main className="p-6 text-sm text-ink/70">
-        episodeId가 없어요. /api/sessions로 모험을 먼저 시작해주세요.
-        {/* TODO(역할 1·4): 실제 플로우에서는 역할 4가 /kid에서 세션 생성 후 이 경로로 리다이렉트 */}
-      </main>
-    );
-  }
+  // episodeId 없이 들어오면 첫 화면에서 다시 시작
+  if (!episodeId) redirect("/kid");
 
-  return (
-    <main>
-      <VoiceSession episodeId={episodeId} mode={mode} />
-    </main>
-  );
+  return <AdventureStage episodeId={episodeId} mode={mode} themeId={isThemeId(themeId) ? themeId : null} />;
 }

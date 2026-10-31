@@ -1,10 +1,11 @@
-// 아이 모드: 섬 리스트 · 오늘의 동화 만들기. 소유: 역할 4.
-// TODO(역할 4): 완료 회차 섬 카드 리스트 + "오늘의 동화 만들기" → /kid/adventure 이동.
+// 아이 모드 메인: 랜딩과 같은 첫 화면 (별 · 장소 카드 · 오늘의 동화 · 부모 관문). ?view=map 이면 이야기 지도부터. 소유: 역할 4.
+import { Suspense } from "react";
+import FrontDoor from "@/components/kid/FrontDoor";
 
 export default function KidHomePage() {
   return (
-    <main>
-      {/* TODO: 섬 리스트 UI */}
-    </main>
+    <Suspense>
+      <FrontDoor />
+    </Suspense>
   );
 }
