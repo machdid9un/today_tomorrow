@@ -13,12 +13,14 @@ import { generateParentReport, type ParentReportOut } from "./reportGenerator";
 import { SEED_PRESET_PARENT_COPY, SEED_TONE_DIRECTIVES } from "./seedPresets";
 import { recommendSeeds } from "./seedRecommend";
 import { plotPatternFor } from "./plotPatterns";
+import { OPENING_GUEST } from "./prompts";
 import {
   advancePlanet,
   isThemeId,
   progressCount,
   progressLine,
-  stageDirective,
+  nightBrief,
+  planNight,
   themeFor,
   themeFromText,
   type PlanetProgress,
@@ -83,7 +85,10 @@ export async function finalizeEpisode(
   const ctx = await loadEpisodeContext(episodeId);
   const theme = episodeTheme(ctx, themeId);
   const prevProgress = ctx.planets[theme.id] ?? null;
-  const arc = stageDirective(theme, prevProgress, plotPatternFor(ctx.episodeId));
+  // 오늘 밤: 밤 고르기 턴(게스트 1화는 1, 아니면 0) 다음 턴의 아이 대답으로 정해졌다 (storyEngine과 같은 규칙)
+  const choiceTurn = ctx.history[0]?.narration === OPENING_GUEST ? 1 : 0;
+  const plan = planNight(theme, prevProgress, ctx.episodeId, ctx.history[choiceTurn + 1]?.childText ?? null);
+  const arc = nightBrief(theme, prevProgress, plan.night, plotPatternFor(ctx.episodeId));
 
   const [reportResult, summaryResult] = await Promise.allSettled([
     generateParentReport({
@@ -98,7 +103,7 @@ export async function finalizeEpisode(
       prevMemory: ctx.memory,
       childName: ctx.childName,
       episodeNumber: ctx.episodeNumber,
-      planet: { theme, progress: prevProgress, goal: arc.goal, stageId: arc.stageId },
+      planet: { theme, progress: prevProgress, goal: arc.goal, stageId: arc.nightId, night: plan.night },
     }),
   ]);
 
@@ -121,7 +126,7 @@ export async function finalizeEpisode(
   const reached = ctx.history.length >= SEED_TURN + 2;
   const nextProgress = advancePlanet(theme, prevProgress, {
     reached,
-    foundColor: summary?.planetUpdate?.found ?? null,
+    nightId: plan.night?.id ?? null,
     collected: summary?.planetUpdate?.made ?? [],
   });
   const planets = { ...ctx.planets, [theme.id]: nextProgress };

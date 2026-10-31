@@ -8,7 +8,7 @@ import { chatJSON, hasLlmKey, REPORT_MODEL, type ChatMessage } from "./llm";
 import { withSubject } from "./persona";
 import { CLOSING_LINE } from "./prompts";
 import { hasPersonalInfo, isSafetyConcern } from "./safety";
-import { progressLine, RAINBOW_COLORS, remainingColors, type PlanetProgress, type StoryTheme } from "./themes";
+import { progressLine, remainingColors, type PlanetNight, type PlanetProgress, type StoryTheme } from "./themes";
 
 export interface SummarizeEpisodeInput {
   turns: TurnRecord[];
@@ -17,7 +17,7 @@ export interface SummarizeEpisodeInput {
   childName: string | null;
   episodeNumber: number;
   /** 오늘의 별과 시즌 진행 (없으면 별 정보 없이 정리) */
-  planet?: { theme: StoryTheme; progress: PlanetProgress | null; goal: string; stageId: string } | null;
+  planet?: { theme: StoryTheme; progress: PlanetProgress | null; goal: string; stageId: string; night?: PlanetNight | null } | null;
 }
 
 /** 오늘 이 별에서 생긴 일 (시즌 진행 계산용) */
@@ -592,12 +592,12 @@ function transcriptLines(turns: TurnRecord[], skipNameQA: boolean): string[] {
 
 function planetBlock(planet: SummarizeEpisodeInput["planet"]): string[] {
   if (!planet) return [];
-  const { theme, progress, goal } = planet;
-  const found = (progress?.collected ?? []).filter((c) => RAINBOW_COLORS.includes(c)).length;
+  const { theme, progress, goal, night } = planet;
+  const found = remainingColors(progress).length;
   return [
     `[오늘의 별] ${theme.planet} — ${theme.tag}. 놀이: ${theme.play}.`,
-    `시즌 줄거리: ${progressLine(theme, progress)}`,
-    `오늘 밤 목표: ${goal}.${theme.id === "rainbow" && ["find_primary", "mix_secondary", "night_color"].includes(planet.stageId) ? ` 오늘 색을 찾았다면 이제 일곱 색 중 ${found + 1}가지를 찾은 것이다.` : ""}`,
+    `시즌 줄거리: ${progressLine(theme, progress, night ?? null)}`,
+    `오늘 밤 목표: ${goal}.${night ? ` 곤란: ${night.hook} 해결 장면(대화에서 실제로 그렇게 됐을 때만): ${night.resolve} 얻는 것: ${night.reward.name}.` : ""}${theme.id === "rainbow" && night && !night.finale ? ` 오늘 색을 되찾았다면 이제 일곱 색 중 ${7 - found + 1}가지를 되찾은 것이다.` : ""}`,
     "",
   ];
 }

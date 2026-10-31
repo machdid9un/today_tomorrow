@@ -5,10 +5,11 @@ import path from "node:path";
 import { loadEpisodeContext, saveTurn, type TurnRecord } from "../contextStore";
 import { summarizeEpisode, type SummarizeEpisodeResult } from "../memorySummarizer";
 import { generateTurn, isSafetyConcern } from "../storyEngine";
+import { OPENING_GUEST } from "../prompts";
 import { simulateChild } from "./childSim";
 import { judgeEpisode, JUDGE_KEYS, type JudgeKey, type JudgeResult } from "./judge";
 import { plotPatternFor } from "../plotPatterns";
-import { advancePlanet, stageDirective, themeFor, type PlanetProgress } from "../themes";
+import { advancePlanet, nightBrief, planNight, themeFor, type PlanetProgress } from "../themes";
 import {
   computeStorybookMetrics,
   computeTurnMetrics,
@@ -205,8 +206,9 @@ async function storyAndScore(
   let summaryError: string | undefined;
   const setup = scenarioPlanet(sc);
   const theme = themeFor(sc.id, setup.themeId);
-  const arc = stageDirective(theme, setup.progress, plotPatternFor(sc.id));
-  const planetText = planetDescription(sc);
+  const plan = planNight(theme, setup.progress, sc.id, history[(history[0]?.narration === OPENING_GUEST ? 1 : 0) + 1]?.childText ?? null);
+  const arc = nightBrief(theme, setup.progress, plan.night, plotPatternFor(sc.id));
+  const planetText = planetDescription(sc, history);
   let planetAfter: PlanetProgress | null = null;
   try {
     const out = await summarizeEpisode({
@@ -214,11 +216,11 @@ async function storyAndScore(
       prevMemory: null,
       childName,
       episodeNumber: 1,
-      planet: { theme, progress: setup.progress, goal: arc.goal, stageId: arc.stageId },
+      planet: { theme, progress: setup.progress, goal: arc.goal, stageId: arc.nightId, night: plan.night },
     });
     planetAfter = advancePlanet(theme, setup.progress, {
       reached: history.length >= (sc.short ? 4 : 5),
-      foundColor: out.planetUpdate?.found ?? null,
+      nightId: plan.night?.id ?? null,
       collected: out.planetUpdate?.made ?? [],
     });
     summary = {
@@ -264,11 +266,12 @@ async function storyAndScore(
 }
 
 /** 심사위원에게 줄 오늘의 별 설명 */
-function planetDescription(sc: EvalScenario): string {
+function planetDescription(sc: EvalScenario, history: TurnRecord[]): string {
   const setup = scenarioPlanet(sc);
   const theme = themeFor(sc.id, setup.themeId);
-  const arc = stageDirective(theme, setup.progress, plotPatternFor(sc.id));
-  return `${theme.planet} — 놀이: ${theme.play}. 오늘 밤 목표: ${arc.goal}.`;
+  const plan = planNight(theme, setup.progress, sc.id, history[(history[0]?.narration === OPENING_GUEST ? 1 : 0) + 1]?.childText ?? null);
+  const arc = nightBrief(theme, setup.progress, plan.night, plotPatternFor(sc.id));
+  return `${theme.planet} — 놀이: ${theme.play}. 오늘 밤: ${arc.goal}. 곤란: ${arc.hook} 해결: ${arc.resolve}${arc.villain.due ? ` 방해꾼 ${arc.villain.name} 등장 예정.` : ""}`;
 }
 
 function selectScenarios(only: string[] | null): EvalScenario[] {
@@ -386,7 +389,7 @@ export async function startRejudge(id: string, concurrency: number): Promise<Eva
         title: r.title,
         turns: r.turns,
         storybook: r.summary?.storybookText ?? "",
-        planet: sc ? planetDescription(sc) : undefined,
+        planet: sc ? planetDescription(sc, r.turns.map((t) => ({ childText: t.childText, narration: t.narration }))) : undefined,
       });
       job.done++;
       void persist(job);

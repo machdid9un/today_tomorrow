@@ -25,10 +25,10 @@ export interface EvalScenario {
 
 /** 시즌 중간 상태 예시 (두 번째 바퀴 시나리오에 씀) */
 const MID_SEASON: Record<PlanetId, PlanetProgress> = {
-  forest: { visits: 2, stage: 2, collected: ["뭉게(구름 나무 이름)", "구름 지붕"] },
-  waterfire: { visits: 1, stage: 1, collected: ["꼭 안아 주기"] },
-  upside: { visits: 3, stage: 3, collected: ["내려가라 얍", "작다"] },
-  rainbow: { visits: 3, stage: 0, collected: ["빨강", "노랑", "파랑"] },
+  forest: { visits: 2, stage: 2, done: ["bird_house", "firefly_road"], collected: ["뭉게(구름 집 이름)", "반짝길"] },
+  waterfire: { visits: 1, stage: 1, done: ["half_moon_hill"], collected: ["꼭 안아 주기"] },
+  upside: { visits: 3, stage: 3, done: ["rain_up", "ceiling_bed", "ant_door"], collected: ["내려가라 얍", "뿅뿅"] },
+  rainbow: { visits: 3, stage: 3, done: ["red_lion", "yellow_sunflower", "blue_sea"], collected: [] },
 };
 
 /** 시나리오의 별과 진행: 순서대로 4개 별을 돌고, 짝수 바퀴는 첫 방문·홀수 바퀴는 시즌 중간 */
