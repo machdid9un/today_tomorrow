@@ -25,6 +25,9 @@ export interface UseVoiceAdventureOptions {
 export function useVoiceAdventure({ episodeId, mode, themeId }: UseVoiceAdventureOptions) {
   const [phase, setPhase] = useState<SessionPhase>("idle");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  // 마이크를 못 쓰는 환경(권한 거부·데스크톱·심사용 노트북): 버튼·글 입력으로 같은 이야기를 진행한다
+  const [micAvailable, setMicAvailable] = useState(true);
+  const micRef = useRef(true);
   const [choices, setChoices] = useState<string[]>([]);
   const [lastChildText, setLastChildText] = useState<string>("");
   const [narrationLog, setNarrationLog] = useState<string[]>([]);
@@ -103,6 +106,7 @@ export function useVoiceAdventure({ episodeId, mode, themeId }: UseVoiceAdventur
   const armSilenceTimer = useCallback(() => {
     // 60초 침묵 타이머는 TTS 재생이 "완전히 끝난 뒤" 시작합니다 (README §4 운영 규칙).
     clearSilenceTimer();
+    if (!micRef.current) return; // 글·버튼 입력 모드에선 '침묵'이 없다 (아이가 고르는 동안 끝내지 않는다)
     silenceTimerRef.current = setTimeout(() => {
       // 추가 TTS 없이 조용히 종료·저장.
       void endEpisode("silence");
@@ -415,11 +419,10 @@ export function useVoiceAdventure({ episodeId, mode, themeId }: UseVoiceAdventur
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       streamRef.current = stream;
     } catch {
-      const message = "마이크 권한이 없어요. 아래 버튼으로 이야기를 골라볼까?";
-      setErrorMessage(message);
-      setPhase("error");
-      speakOnce(message); // 마이크가 없어 다시 들을 수 없으니 복구 없이 안내만 들려준다.
-      return;
+      // 마이크가 없어도 이야기는 시작한다: 용의 말은 TTS로 나오고, 아이는 버튼이나 글로 대답한다.
+      micRef.current = false;
+      setMicAvailable(false);
+      setErrorMessage("마이크를 쓸 수 없어요. 아래 버튼을 고르거나 글로 대답해 줘도 돼요.");
     }
 
     episodeStartedAtRef.current = performance.now();
@@ -457,6 +460,8 @@ export function useVoiceAdventure({ episodeId, mode, themeId }: UseVoiceAdventur
     startRecording, // ptt 모드에서 버튼 누를 때 호출
     stopRecording, // ptt 모드에서 버튼 뗄 때 호출
     submitChoice, // 선택지 버튼 폴백
+    submitText: submitChoice, // 글 입력 폴백 (마이크 없는 환경)
+    micAvailable,
     endManually,
   };
 }

@@ -28,7 +28,15 @@ export default function AdventureStage(props: AdventureStageProps) {
 }
 
 function Stage({ episodeId, mode, themeId, onReset }: AdventureStageProps & { onReset: () => void }) {
-  const { phase, errorMessage, choices, narrationLog, start, startRecording, stopRecording, submitChoice, endManually } = useVoiceAdventure({ episodeId, mode, themeId: themeId ?? undefined });
+  const { phase, errorMessage, choices, narrationLog, start, startRecording, stopRecording, submitChoice, submitText, micAvailable, endManually } = useVoiceAdventure({ episodeId, mode, themeId: themeId ?? undefined });
+  const [typed, setTyped] = useState("");
+  const canType = !micAvailable && (phase === "listening" || phase === "error");
+  const sendTyped = () => {
+    const v = typed.trim();
+    if (!v) return;
+    setTyped("");
+    void submitText(v);
+  };
   const planet = PLANETS.find((p) => p.id === themeId) ?? null;
   const autoStarted = useRef(false);
   const isMock = episodeId.startsWith("mock-");
@@ -108,6 +116,28 @@ function Stage({ episodeId, mode, themeId, onReset }: AdventureStageProps & { on
               ))}
             </div>
           </div>
+        )}
+
+        {canType && (
+          <form
+            className={styles.typeRow}
+            onSubmit={(e) => {
+              e.preventDefault();
+              sendTyped();
+            }}
+          >
+            <input
+              className={styles.dialogInput}
+              value={typed}
+              onChange={(e) => setTyped(e.target.value)}
+              placeholder={choices.length ? "다른 대답을 적어도 돼요" : "여기에 대답을 적어 줘요 (예: 지우)"}
+              aria-label="글로 대답하기"
+              autoFocus
+            />
+            <button type="submit" className={styles.choice} disabled={!typed.trim()}>
+              보내기
+            </button>
+          </form>
         )}
 
         {phase !== "idle" && (
