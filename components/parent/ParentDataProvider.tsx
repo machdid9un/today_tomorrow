@@ -7,6 +7,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState } 
 import {
   fetchChildFromApi,
   fetchEpisodeDetail,
+  fetchWorldIdForEpisode,
   mockChildren,
   MOCK_TODAY,
   type ChildProfile,
@@ -75,10 +76,18 @@ export default function ParentDataProvider({
     const params = new URLSearchParams(window.location.search);
     const forceMock = params.get("mock") === "1";
     const urlWorld = params.get("worldId");
+    const urlEpisode = params.get("ep");
     if (urlWorld) writeStorage(WORLD_KEY, urlWorld);
-    const worldId = urlWorld || readStorage(WORLD_KEY);
 
     (async () => {
+      let worldId = urlWorld || readStorage(WORLD_KEY);
+      // 건네주기 화면이 worldId를 못 넘긴 경우(예: 클라이언트 타이밍 문제)에도, ep(episodeId)는
+      // 항상 있으니 그걸로 회차를 조회해 world_id를 역추적한다(GET /api/episodes/[id]).
+      if (!worldId && urlEpisode && !forceMock) {
+        worldId = await fetchWorldIdForEpisode(urlEpisode, ctrl.signal);
+        if (ctrl.signal.aborted) return;
+        if (worldId) writeStorage(WORLD_KEY, worldId);
+      }
       const real = forceMock ? null : await fetchChildFromApi(worldId, ctrl.signal);
       if (ctrl.signal.aborted) return;
       const list = real ? [real] : mockChildren();

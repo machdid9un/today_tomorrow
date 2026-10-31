@@ -6,6 +6,7 @@
 import Dragon from "./Dragon";
 import KidShell, { useKidToast } from "./KidShell";
 import ParentGate from "./ParentGate";
+import { readWorldId } from "./world";
 import styles from "./kid.module.css";
 
 export interface HandoffScreenProps {
@@ -24,7 +25,12 @@ export default function HandoffScreen({ episodeId, message = "오늘 이야기�
 
 function HandoffBody({ episodeId, message }: Required<HandoffScreenProps>) {
   const toast = useKidToast();
-  const href = `/parent?view=daily&ep=${encodeURIComponent(episodeId)}`;
+  // worldId도 같이 넘겨야 부모 화면(ParentDataProvider)이 진짜 API로 이 세계의 리포트를
+  // 가져온다. 안 넘기면 worldId를 못 찾아 항상 예시(mock) 데이터로 빠진다.
+  const worldId = readWorldId();
+  const params = new URLSearchParams({ view: "daily", ep: episodeId });
+  if (worldId) params.set("worldId", worldId);
+  const href = `/parent?${params.toString()}`;
   return (
     <section className={`${styles.view} ${styles.handoff}`} aria-labelledby="handoff-title">
       <span className={`${styles.idle} ${styles.handoffDragon}`}>

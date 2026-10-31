@@ -224,9 +224,11 @@ async function getJson(url: string, signal?: AbortSignal): Promise<unknown | nul
   }
 }
 
-/** GET /api/episodes?worldId= (역할 1). 실패·미구현(501)이면 null. */
+/** GET /api/episodes?worldId=&mode=parent (역할 1). 실패·미구현(501)이면 null. */
 export async function fetchChildFromApi(worldId: string | null, signal?: AbortSignal): Promise<ChildProfile | null> {
-  const url = worldId ? `/api/episodes?worldId=${encodeURIComponent(worldId)}` : "/api/episodes";
+  const url = worldId
+    ? `/api/episodes?worldId=${encodeURIComponent(worldId)}&mode=parent`
+    : "/api/episodes?mode=parent";
   const json = await getJson(url, signal);
   return json === null ? null : normalizeEpisodeList(json, worldId);
 }
@@ -236,6 +238,17 @@ export async function fetchEpisodeDetail(id: string, signal?: AbortSignal): Prom
   const json = await getJson(`/api/episodes/${encodeURIComponent(id)}?mode=parent`, signal);
   if (!isObj(json)) return null;
   return normalizeEpisode(isObj(json.episode) ? { ...json, ...json.episode } : json);
+}
+
+/**
+ * URL에 worldId는 없고 ep(episodeId)만 있을 때를 위한 안전장치.
+ * 건네주기 화면이 worldId를 못 넘긴 경우에도, ep로 회차를 조회해 world_id를 역추적한다.
+ */
+export async function fetchWorldIdForEpisode(episodeId: string, signal?: AbortSignal): Promise<string | null> {
+  const json = await getJson(`/api/episodes/${encodeURIComponent(episodeId)}`, signal);
+  if (!isObj(json)) return null;
+  const episode = isObj(json.episode) ? json.episode : json;
+  return str(pick(episode, "worldId", "world_id"));
 }
 
 /** PATCH /api/sessions/[worldId]/seed { preset } (역할 1). 성공하면 true. */
