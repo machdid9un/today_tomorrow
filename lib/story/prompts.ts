@@ -251,7 +251,15 @@ export function questionPlan(p: StoryPromptInput): string {
   const text = p.childText.trim();
   const young = p.childAge === null || p.childAge <= 5; // 나이를 모르면 어린 쪽에 맞춘다
   const parts: string[] = [];
-  const beat = beatLine(p, young);
+  let beat = beatLine(p, young);
+  // 같은 모양의 고르기 질문('A할까용, 아니면 B할까용?')이 두 턴 연속이면 이번엔 단서 + 열린 질문으로 바꾼다
+  const lastTwo = p.history.slice(-2).map((t) => t.narration);
+  if (lastTwo.length === 2 && lastTwo.every((n) => /아니면/.test(n)) && !["choose", "hook", "twist", "wrap"].includes(p.phase ?? "")) {
+    beat += " 앞 두 턴이 모두 고르기 질문이었다. 이번엔 'A할까용, 아니면 B할까용?' 대신 바로 앞 문장에 소리·빛·물건 단서를 하나 심고 아이가 자기 말로 채우는 짧은 열린 질문을 한다(예: '…이 반짝여용. 뭐라고 불러 줄까용?'). choices에만 예시 두 개를 넣는다.";
+  }
+  if (p.themeId === "waterfire" && (p.phase === "first_idea" || p.phase === "how")) {
+    beat += " 물불 행성: 방법을 묻기 전에 한쪽 친구의 마음을 먼저 한 번 묻거나 들려준다('똘방이는 지금 어떤 마음일까용?'). 둘 다 웃는 방법은 그다음이다.";
+  }
 
   // 고르기·곤란 턴은 아이 상태보다 뼈대가 우선 (아이가 '몰라' 해도 첫 보기로 간다)
   if (p.phase === "choose" || p.phase === "hook" || p.phase === "twist") {
