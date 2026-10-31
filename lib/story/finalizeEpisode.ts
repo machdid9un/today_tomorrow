@@ -95,6 +95,7 @@ export async function finalizeEpisode(
       turns: ctx.history,
       childName: ctx.childName,
       seedDirective: seedDirectiveFor(ctx),
+      seedLabel: seedUsed(ctx) && ctx.seedPreset ? (ctx.seedPreset === "custom" ? "직접 적은 마음" : SEED_PRESET_PARENT_COPY[ctx.seedPreset]?.label ?? null) : null,
       endReason,
       theme,
     }),
@@ -104,6 +105,7 @@ export async function finalizeEpisode(
       childName: ctx.childName,
       episodeNumber: ctx.episodeNumber,
       planet: { theme, progress: prevProgress, goal: arc.goal, stageId: arc.nightId, night: plan.night },
+      seedPreset: seedUsed(ctx) ? ctx.seedPreset : null,
     }),
   ]);
 

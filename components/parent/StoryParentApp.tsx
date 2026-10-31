@@ -373,6 +373,20 @@ export default function StoryParentApp({ seedCopy, initialTab = "report", initia
                 )}
               </section>
             )}
+            {r.seedEcho && (
+              <section className={`${s.card} ${s.echo}`}>
+                <p className={s.label}>담아 둔 마음 · {r.seedEcho.label}</p>
+                <h2>용이 이렇게 전했어요</h2>
+                <p className={s.echoNote}>{r.seedEcho.note}</p>
+                {r.seedEcho.dragonLine && <blockquote className={s.echoQuote}>🐲 “{r.seedEcho.dragonLine}”</blockquote>}
+                {r.seedEcho.childQuote && (
+                  <blockquote className={`${s.echoQuote} ${s.echoChild}`}>
+                    {call} “{r.seedEcho.childQuote}”
+                  </blockquote>
+                )}
+                <p className={s.fine}>아이가 그 마음을 ‘따랐는지’는 보지 않아요. 용이 곁에 있던 방식만 보여 드려요.</p>
+              </section>
+            )}
             {r.lineForParent && (
               <section className={`${s.card} ${s.line}`}>
                 <h2>오늘 건네볼 한마디</h2>

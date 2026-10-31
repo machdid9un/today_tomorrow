@@ -8,7 +8,7 @@ import { toYongStyle, withTopic } from "./persona";
 import { buildStoryMessages, CLOSING_LINE, OPENING_GUEST, phaseFor, SEED_TURN, WIND_DOWN_TURN, type NightCard, type TurnMode } from "./prompts";
 import { isSafetyConcern } from "./safety";
 import { plotPatternFor } from "./plotPatterns";
-import { resolveSeedDirective, seedSceneHint } from "./seedPresets";
+import { resolveSeedDirective, seedBeatFor, seedSceneHint } from "./seedPresets";
 import { nightBrief, planNight, themeFor } from "./themes";
 
 export { isSafetyConcern };
@@ -247,6 +247,7 @@ export async function generateTurn(input: GenerateTurnInput): Promise<GeneratedT
           night,
           phase,
           seedTone,
+          seedBeat: seedTone ? seedBeatFor(ctx.seedPreset, phase, ctx.childName?.trim() || "친구") : null,
           restMode: ctx.seedPreset === "rest",
         }),
         maxTokens: 600,

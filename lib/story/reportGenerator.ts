@@ -44,12 +44,27 @@ export type ParentReportOut = ParentReport & {
   planet?: { id: string; planet: string; done: number; total: number; goal: string; collected: string[] };
   /** 다음 씨앗 추천(아이 말 근거 포함). finalizeEpisode가 붙인다. report_json에 함께 저장됨. */
   seedSuggestions?: SeedSuggestion[];
+  /** 오늘 담은 마음이 이야기에서 어떻게 전해졌는지 (부모가 '티 나게' 확인하는 칸). 마음 담기가 있던 회차만. */
+  seedEcho?: SeedEcho;
 };
+
+export interface SeedEcho {
+  /** 부모가 고른 마음 이름 (예: 용기 북돋기) */
+  label: string;
+  /** 이야기 용이 그 마음을 어떻게 전했는지 1문장 (해요체, 사실 위주) */
+  note: string;
+  /** 그 장면의 이야기 용 말 원문 조각 (전사에 실제로 있는 글자만) */
+  dragonLine: string | null;
+  /** 그 장면에서 아이가 한 말 원문 (있으면) */
+  childQuote: string | null;
+}
 
 export interface GenerateReportInput {
   turns: TurnRecord[]; // turn_index 순서, turn 0(childText "", 첫 멘트) 포함
   childName: string | null;
   seedDirective: string | null; // 이번 회차에 쓴 마음 담기 설명 (없으면 null)
+  /** 부모 화면에 보일 마음 담기 이름 (예: 용기 북돋기). 있으면 seedEcho를 만든다 */
+  seedLabel?: string | null;
   endReason?: EndReason | null;
   /** 오늘의 별 (관찰 초점·피할 해석) */
   theme?: StoryTheme | null;
@@ -267,9 +282,10 @@ export const REPORT_SYSTEM_PROMPT = `너는 '상상 무전기'의 관찰 노트 
 8. nextEpisodeTeaser: 내일 이야기 용과 만날 별의 새 이야기를 궁금하게 만드는 1문장. 다음 밤 예고는 기대만 살짝 건다(위기·숙제처럼 들리지 않게).
 8-1. moodWeather: 이야기 속에서 아이가 한 말에 드러난 기분을 날씨 하나로. "sunny"(즐겁게 웃고 신나게 말함) / "partly_cloudy"(대체로 즐겁지만 망설이거나 '몰라'가 몇 번 있었음) / "cloudy"(말이 적고 기운이 없어 보였음) / "rainy"(무섭다·슬프다·속상하다처럼 힘든 마음을 말함). 아이를 판정하지 않고, 그날 이야기 속 모습만 본다. 근거가 약하면 "partly_cloudy".
 8-2. moodNote: 그 날씨를 고른 이유 1문장(해요체, 사실 위주: "\"신난다\"라고 여러 번 말했어요."). moodEvidence: 근거가 된 [아이] 말 원문 조각 1~2개.
+8-3. seedEcho (입력에 '마음 담기'가 있을 때만, 없으면 null): 오늘 담은 마음을 이야기 용이 이야기 속에서 어떻게 전했는지 정리한다. {"note": "...", "dragonLine": "...", "childQuote": "..."}. note는 1문장 해요체, 사실 위주("사자 앞에서 망설이는 장면에서 용이 옆에 있다고 말해 줬어요"). dragonLine은 그 장면의 [이야기 용] 말 원문 조각 1개를 글자 그대로 복사(없으면 null). childQuote는 그 장면에서 아이가 한 말 원문 1개(없으면 null). 아이가 그 마음을 '따랐는지', '잘했는지'는 절대 판정하지 않는다.
 9. 다음 낱말은 어떤 칸에도 쓰지 않는다. 이야기 속 사건을 설명할 때도 마찬가지다: ${FORBIDDEN_TERMS.join(", ")}. (예: "치료해 줬어요" 대신 "돌봐 줬어요", "문제" 대신 "일")
 10. 출력은 아래 형식의 JSON 하나만. 다른 글자 금지.
-{"summary": "...", "childQuotes": ["..."], "childChoices": ["..."], "observations": [{"inference": "...", "evidence": ["..."]}], "lineForParent": "...", "safetyFlags": [], "nextEpisodeTeaser": "...", "moodWeather": "sunny", "moodNote": "...", "moodEvidence": ["..."]}`;
+{"summary": "...", "childQuotes": ["..."], "childChoices": ["..."], "observations": [{"inference": "...", "evidence": ["..."]}], "lineForParent": "...", "safetyFlags": [], "nextEpisodeTeaser": "...", "moodWeather": "sunny", "moodNote": "...", "moodEvidence": ["..."], "seedEcho": null}`;
 
 const MAX_TRANSCRIPT_TURNS = 80;
 const MAX_LINE_CHARS = 400;
@@ -290,7 +306,7 @@ export function buildReportMessages(input: GenerateReportInput): ChatMessage[] {
     `아이 이름: ${input.childName?.trim() || "알 수 없음"}`,
     input.endReason ? `종료: ${END_REASON_LABEL[input.endReason] ?? input.endReason}` : "",
     input.seedDirective
-      ? `${collapse(input.seedDirective)} (이 마음 담기를 아이가 '따랐는지'는 평가하지 않는다.)`
+      ? `마음 담기: ${collapse(input.seedDirective)} (이 마음 담기를 아이가 '따랐는지'는 평가하지 않는다. seedEcho 칸에 용이 어떻게 전했는지만 적는다.)`
       : "",
     input.theme
       ? `오늘의 별: ${input.theme.planet} — 놀이: ${input.theme.play}. 관찰 초점: ${input.theme.observe.focus}. 좋은 관찰 예: ${input.theme.observe.example} 절대 쓰지 않는 해석: ${input.theme.observe.never}.`
@@ -318,6 +334,7 @@ interface RawReport {
   moodWeather?: unknown;
   moodNote?: unknown;
   moodEvidence?: unknown;
+  seedEcho?: unknown;
 }
 
 /** LLM(또는 mock) 결과를 계약 형태로 정리하고 원문 대조·금지어 규칙을 코드로 강제한다. */
@@ -395,8 +412,10 @@ function sanitizeReport(
   if (dropped.length) console.warn(`[report] sanitized: ${dropped.join(", ")}`);
 
   const mood = sanitizeMood(raw, utterances, safetyFlags.length > 0);
+  const seedEcho = input.seedLabel ? sanitizeSeedEcho(raw.seedEcho, input.seedLabel, input.turns, utterances) : undefined;
 
   return {
+    ...(seedEcho ? { seedEcho } : {}),
     summary,
     childQuotes,
     childChoices,
@@ -408,6 +427,52 @@ function sanitizeReport(
     ...mood,
     keywords: childKeywords(utterances),
   };
+}
+
+// ───────────────────────── 오늘 담은 마음이 어떻게 전해졌나 ─────────────────────────
+
+/** 이야기 용의 말 원문 조각 찍기: 전사의 narration에 실제로 있는 글자만 (공백 차이 허용). */
+function findDragonLine(raw: unknown, turns: TurnRecord[]): string | null {
+  if (typeof raw !== "string") return null;
+  const needle = raw.replace(WRAP_RE, "").replace(/\s+/g, "");
+  if (needle.length < 4) return null;
+  for (const t of turns) {
+    const n = typeof t?.narration === "string" ? t.narration : "";
+    const compact = n.replace(/\s+/g, "");
+    const k = compact.indexOf(needle);
+    if (k === -1) continue;
+    // 원문 위치 되찾기 (공백 포함)
+    const positions: number[] = [];
+    for (let i = 0; i < n.length; i++) if (!/\s/.test(n[i])) positions.push(i);
+    return n.slice(positions[k], positions[k + needle.length - 1] + 1).trim().slice(0, 120);
+  }
+  return null;
+}
+
+/**
+ * LLM이 낸 seedEcho를 검증한다: note는 금지어 없이 1~2문장, 인용은 전사에 실제로 있는 글자만.
+ * LLM이 비우면 코드가 '용의 믿어 주는 말'을 전사에서 찍어 최소한의 칸은 채운다(없으면 note만).
+ */
+function sanitizeSeedEcho(raw: unknown, label: string, turns: TurnRecord[], utterances: Utterance[]): SeedEcho {
+  const o = raw && typeof raw === "object" ? (raw as { note?: unknown; dragonLine?: unknown; childQuote?: unknown }) : {};
+  let note = firstSentences(asString(o.note), 2, 160);
+  if (note && containsForbiddenTerm(note)) note = "";
+  let dragonLine = findDragonLine(o.dragonLine, turns);
+  const childQuote = findVerbatim(o.childQuote, utterances);
+  if (!dragonLine) {
+    // 전사에서 마음 담기 말투 흔적을 직접 찍는다
+    const CUE = /[^.!?~…]*(옆에\s*있어용|할 수 있어용|같이\s*갈게용|같이\s*가용|두근거|덕분에|해냈|같이\s*잘게용)[^.!?~…]*[.!?~…]?/;
+    for (const t of turns) {
+      const n = typeof t?.narration === "string" ? t.narration : "";
+      const m = n.match(CUE);
+      if (m && m[0].trim().length >= 6) {
+        dragonLine = m[0].trim().slice(0, 120);
+        break;
+      }
+    }
+  }
+  if (!note) note = dragonLine ? `이야기 용이 이야기 속에서 이렇게 전했어요.` : `이번 이야기에서는 용의 태도로만 조용히 담겼어요.`;
+  return { label, note, dragonLine, childQuote };
 }
 
 // ───────────────────────── 마음 날씨·자주 쓴 낱말 ─────────────────────────
