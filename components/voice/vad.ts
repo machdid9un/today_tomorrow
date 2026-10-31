@@ -37,8 +37,8 @@ export function startEnergyVAD(
   options: EnergyVADOptions = {}
 ): EnergyVAD {
   const {
-    speechThreshold = 0.08,
-    speechMinDurationMs = 300,
+    speechThreshold = 0.045,
+    speechMinDurationMs = 200,
     silenceHangoverMs = 900,
     calibrationMs = 600,
     noiseMultiplier = 3,
@@ -46,6 +46,9 @@ export function startEnergyVAD(
     onSpeechStart,
     onSpeechEnd,
   } = options;
+  // 음절 사이 짧은 끊김은 "말이 끝난 것"으로 치지 않기 위한 유예 시간.
+  // silenceHangoverMs(발화 "종료" 판정용)보다 훨씨 짧게 잡아서, 말 시작 판정이 굼뜨지 않게 한다.
+  const startGraceMs = 150;
 
   const AudioContextCtor =
     window.AudioContext ||
@@ -59,8 +62,12 @@ export function startEnergyVAD(
 
   const buffer = new Float32Array(analyser.fftSize);
   let isSpeaking = false;
+  // "말 시작" 판정용: 임계값 이상이 처음 시작된 시각, 그리고 그 사이 끊긴(임계값 밑) 구간이 시작된 시각.
   let aboveThresholdSinceMs: number | null = null;
-  let belowThresholdSinceMs: number | null = null;
+  let belowStreakSinceMs: number | null = null;
+  // "말 끝" 판정용: 말하는 중에 임계값 밑으로 내려간 시각.
+  let silenceSinceMs: number | null = null;
+  let smoothedRms = 0;
   let rafId: number;
   let stopped = false;
 
@@ -79,11 +86,14 @@ export function startEnergyVAD(
     for (let i = 0; i < buffer.length; i += 1) {
       sumSquares += buffer[i] * buffer[i];
     }
-    const rms = Math.sqrt(sumSquares / buffer.length);
+    const rawRms = Math.sqrt(sumSquares / buffer.length);
+    // 지수평활(EMA)로 프레임 단위 떨림을 줄인다. 음절 사이 순간적인 하락을 완만하게 만들어 준다.
+    smoothedRms = smoothedRms === 0 ? rawRms : smoothedRms * 0.7 + rawRms * 0.3;
+    const rms = smoothedRms;
     const now = performance.now();
 
     if (calibrating) {
-      noiseSampleSum += rms;
+      noiseSampleSum += rawRms;
       noiseSampleCount += 1;
       if (now - startedAt >= calibrationMs) {
         calibrating = false;
@@ -96,19 +106,25 @@ export function startEnergyVAD(
     }
 
     if (rms >= effectiveThreshold) {
-      belowThresholdSinceMs = null;
+      belowStreakSinceMs = null;
+      silenceSinceMs = null;
       if (aboveThresholdSinceMs === null) aboveThresholdSinceMs = now;
       if (!isSpeaking && now - aboveThresholdSinceMs >= speechMinDurationMs) {
         isSpeaking = true;
         onSpeechStart?.();
       }
     } else {
-      aboveThresholdSinceMs = null;
+      // 음절 사이 짧은 끊김(startGraceMs 이내)은 무시하고 "말하는 중" 누적을 계속 유지한다.
+      if (belowStreakSinceMs === null) belowStreakSinceMs = now;
+      if (now - belowStreakSinceMs >= startGraceMs) {
+        aboveThresholdSinceMs = null;
+      }
+
       if (isSpeaking) {
-        if (belowThresholdSinceMs === null) belowThresholdSinceMs = now;
-        if (now - belowThresholdSinceMs >= silenceHangoverMs) {
+        if (silenceSinceMs === null) silenceSinceMs = now;
+        if (now - silenceSinceMs >= silenceHangoverMs) {
           isSpeaking = false;
-          belowThresholdSinceMs = null;
+          silenceSinceMs = null;
           onSpeechEnd?.();
         }
       }
