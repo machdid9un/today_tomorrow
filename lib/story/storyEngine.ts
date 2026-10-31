@@ -230,7 +230,8 @@ export async function generateTurn(input: GenerateTurnInput): Promise<GeneratedT
           raw.narration.trim(),
           shouldEnd,
           askName ? "누가 신호를 보냈을까요?" : FALLBACK_QUESTION,
-          mode === "safety" ? 4 : 3 // 안전 응답은 '어른에게 말하기' 문장이 잘리지 않게 4문장까지
+          // 안전 응답('어른에게 말하기')과 갈림길 장면(받아 주기 + 장면 설명 + 질문)은 잘리지 않게 4문장까지
+          mode === "safety" || mode === "seed" ? 4 : 3
         )
       : "";
   if (!narration) throw new Error("EMPTY_NARRATION");
