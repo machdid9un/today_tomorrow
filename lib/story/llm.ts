@@ -260,6 +260,9 @@ export async function chatJSON<T>(opts: ChatJSONOptions): Promise<T> {
     // 한 번은 더 시도한다(여기서도 실패하면 그대로 던진다).
     const name = err instanceof Error ? err.name : "Error";
     const message = err instanceof Error ? err.message : String(err);
+    // 타임아웃(AbortError)은 이미 시간 예산을 다 쓴 것이라 다시 시도하면 라우트 상한(turn 30초·complete 60초)을 넘긴다.
+    // 네트워크 오류(TypeError 등)만 한 번 더 시도한다.
+    if (name === "AbortError") throw err;
     console.warn(`[llm] 첫 요청 실패(${name}: ${message}) → 한 번 더 시도`);
     res = await callOnce(opts, model, flags);
   }
