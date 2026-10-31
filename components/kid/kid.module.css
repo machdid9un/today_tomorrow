@@ -25,9 +25,10 @@
 
 /* 머리 */
 .bar { height: 92px; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-.brand { font-family: var(--font-display); font-size: 27px; letter-spacing: -1px; color: #b69bed; }
-.brand span { color: #ff947e; }
-.brand sup { display: inline-block; margin-left: 2px; color: #ffe191; font-size: 22px; transform: rotate(15deg); }
+.brand { font-family: var(--font-display); font-size: 35px; letter-spacing: 0; }
+/* 쫑긋 로고 (Wordmark): 밤하늘 위라 긋과 귀를 한 단계 밝게 */
+.brand { display: inline-flex; align-items: flex-start; --wm-jjong: var(--yong-coral); --wm-geut: #a48ff0; --wm-ear: #4a3f8f; --wm-ear-in: #5f53ad; }
+.brand sup { display: inline-block; position: static; top: auto; line-height: 1; margin: 0.5em 0 0 4px; align-self: flex-start; color: #ffe191; font-size: 22px; transform: rotate(15deg); }
 .barRight { display: flex; align-items: center; gap: 6px; }
 .login { min-height: 40px; display: inline-flex; align-items: center; padding: 0 10px; border-radius: 999px; font-size: 13px; color: #b9addb; }
 .login:hover { color: var(--color-cream); text-decoration: underline; text-underline-offset: 3px; }
@@ -95,12 +96,20 @@
   box-shadow: 0 5px 0 #d3655733;
   transition: background 0.2s, transform 0.2s;
 }
-.primary { min-height: 60px; padding: 12px 22px; font-size: 18px; }
+.primary { position: relative; min-height: 64px; padding: 12px 64px; font-family: var(--font-display); font-weight: 400; font-size: 23px; letter-spacing: -0.2px; text-align: center; }
 .primarySmall { min-height: 50px; font-size: 15px; }
+/* .door button { font: inherit }보다 우선: 큰 버튼은 제목 글씨(Jua)로 크게 */
+.door button.primary { font-family: var(--font-display); font-weight: 400; font-size: 23px; line-height: 1.2; }
 .primary:hover, .primarySmall:hover { background: #ff977e !important; transform: translateY(-2px); }
 .primary:active, .primarySmall:active { transform: translateY(1px); }
-.primaryIcon { width: 26px; height: 26px; fill: none; stroke: currentColor; stroke-width: 1.8; }
-.primaryArrow { margin-left: auto; font-size: 23px; }
+.primaryIcon { position: absolute; left: 22px; top: 50%; width: 28px; height: 28px; margin-top: -14px; fill: none; stroke: currentColor; stroke-width: 1.9; }
+/* "이야기 용 만나기": 띠링띠링 — 마이크가 흔들리고 버튼이 살짝 통통 (바로 시작하도록 눈길을 끎) */
+.ringing { animation: ctaBob 2.6s ease-in-out infinite; }
+.ringing .primaryIcon { transform-origin: 50% 20%; animation: ring 2.6s ease-in-out infinite; }
+.ringing:hover { animation-play-state: paused; }
+@keyframes ring { 0%, 52%, 100% { transform: rotate(0); } 56% { transform: rotate(-16deg); } 62% { transform: rotate(14deg); } 68% { transform: rotate(-10deg); } 74% { transform: rotate(6deg); } 80% { transform: rotate(0); } }
+@keyframes ctaBob { 0%, 52%, 100% { transform: translateY(0) scale(1); box-shadow: 0 5px 0 #d3655733, 0 0 0 0 #ff876e00; } 60% { transform: translateY(-3px) scale(1.015); box-shadow: 0 7px 0 #d3655733, 0 0 0 8px #ff876e33; } 72% { transform: translateY(0) scale(1); box-shadow: 0 5px 0 #d3655733, 0 0 0 14px #ff876e00; } }
+.primaryArrow { position: absolute; right: 22px; top: 50%; transform: translateY(-50%); font-family: var(--font-body); font-size: 23px; }
 .helper { margin: 13px 0 19px; text-align: center; font-size: 11px; line-height: 1.7; color: #a89bbf; }
 .error { margin: 10px 0 0; text-align: center; font-size: 13px; color: #ffc2b3; }
 
@@ -208,7 +217,7 @@
 @media (max-width: 390px) {
   .app { padding: 0 21px; }
   .bar { height: 77px; }
-  .brand { font-size: 23px; }
+  .brand { font-size: 31px; }
   .title { font-size: 28px; }
   .sub { font-size: 13px; }
   .homeScene { height: 365px; }
@@ -216,7 +225,10 @@
   .dragonHome { top: 47px; left: 16%; width: 61%; }
   .caption { gap: 8px; margin-bottom: 17px; }
   .caption strong { font-size: 14px; }
-  .primary { min-height: 56px; font-size: 16px; }
+  .primary { min-height: 60px; font-size: 21px; padding: 12px 56px; }
+  .door button.primary { font-size: 21px; }
+  .primaryIcon { left: 18px; }
+  .primaryArrow { right: 18px; }
   .mapWindow { height: 342px; }
   .stopArt { height: 235px; }
   .destination { margin-bottom: 18px; }
@@ -225,6 +237,7 @@
 @media (prefers-reduced-motion: reduce) {
   .star, .starCross, .idle, .hovering .idle, .hovering::after, .view { animation: none !important; }
   .mapRail, .stop, .primary, .speech, .toast { transition: none !important; }
+  .ringing, .ringing .primaryIcon { animation: none !important; }
 }
 
 /* 모험 화면 */

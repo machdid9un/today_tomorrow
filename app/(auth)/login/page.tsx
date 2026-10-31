@@ -5,7 +5,7 @@ import type { Metadata } from "next";
 import { Suspense } from "react";
 import LoginScreen from "@/components/parent/LoginScreen";
 
-export const metadata: Metadata = { title: "로그인 · 상상 무전기" };
+export const metadata: Metadata = { title: "로그인 · 쫑긋" };
 
 export default function LoginPage() {
   return (

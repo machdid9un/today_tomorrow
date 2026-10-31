@@ -1,6 +1,7 @@
 // 공유 카드 (README §3.D, P1). 소유: 역할 4.
 // 회차 제목 + 별·장소 비주얼. includeQuote=true일 때만 아이 원문 인용 1줄. 프로필·마음 담기·리포트는 절대 넣지 않는다.
 // TODO(역할 1): 공유 토큰 → 카드 정보 조회 API가 생기면 lookup()만 바꾸면 된다. 지금은 /share/sample 만 보인다.
+import type { Metadata } from "next";
 import Link from "next/link";
 import PlanetArt from "@/components/kid/PlanetArt";
 import { PLANETS } from "@/components/kid/planets";
@@ -22,6 +23,8 @@ async function lookup(token: string): Promise<ShareCard | null> {
   return null;
 }
 
+export const metadata: Metadata = { title: "이야기 카드 · 쫑긋" };
+
 export default async function ShareCardPage({ params }: { params: Promise<{ token: string }> }) {
   const { token } = await params;
   const card = await lookup(token);
@@ -38,7 +41,7 @@ export default async function ShareCardPage({ params }: { params: Promise<{ toke
             </p>
             <h1 className={styles.handoffTitle}>{card.title}</h1>
             {card.quote && <p className={styles.handoffText}>“{card.quote}”</p>}
-            <p className={styles.handoffText}>아이가 목소리로 만든 이야기예요. 상상 무전기</p>
+            <p className={styles.handoffText}>아이가 목소리로 만든 이야기예요. 쫑긋</p>
           </>
         ) : (
           <>
@@ -47,7 +50,7 @@ export default async function ShareCardPage({ params }: { params: Promise<{ toke
           </>
         )}
         <Link href="/" className={styles.back}>
-          상상 무전기 둘러보기 →
+          쫑긋 둘러보기 →
         </Link>
       </article>
     </main>

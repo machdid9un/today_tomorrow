@@ -3,7 +3,7 @@ import type { Metadata } from "next";
 import StoryParentApp from "@/components/parent/StoryParentApp";
 import { getSeedCopy } from "@/components/parent/seedCopy";
 
-export const metadata: Metadata = { title: "동화책 · 상상 무전기" };
+export const metadata: Metadata = { title: "동화책 · 쫑긋" };
 
 export default async function ParentStorybookPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;

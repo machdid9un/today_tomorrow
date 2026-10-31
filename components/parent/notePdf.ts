@@ -39,7 +39,7 @@ const C = { ink: "#1f1d2b", muted: "#6c6779", faint: "#9a94a8", purple: "#6454a4
 
 export async function makeNotePdf(data: NoteData): Promise<Blob> {
   // 웹 서체는 글자 묶음별로 받아지므로, 노트에 나오는 글자 전부를 미리 받아 둔다 (안 하면 일부 글자만 다른 서체)
-  const corpus = "상상 무전기 · 이야기 관찰 노트 요즘 샘플 기록 관찰 아이가 한 말 자주 쓴 낱말 고른 것 함께 해 볼 수 있는 것 꼭 읽어 주세요 건네볼 한마디 마음 날씨 진단이 아닌 기록이에요 화 번 0123456789 / “”" + JSON.stringify(data);
+  const corpus = "쫑긋 · 이야기 관찰 노트 요즘 샘플 기록 관찰 아이가 한 말 자주 쓴 낱말 고른 것 함께 해 볼 수 있는 것 꼭 읽어 주세요 건네볼 한마디 마음 날씨 진단이 아닌 기록이에요 화 번 0123456789 / “”" + JSON.stringify(data);
   await Promise.all([
     document.fonts.load(`400 26px ${BODY}`, corpus),
     document.fonts.load(`500 26px ${BODY}`, corpus),
@@ -213,7 +213,7 @@ export async function makeNotePdf(data: NoteData): Promise<Blob> {
   }
   ctx.fillStyle = "#9b6e45";
   ctx.font = `700 22px ${BODY}`;
-  ctx.fillText("상상 무전기 · 이야기 관찰 노트", M, M);
+  ctx.fillText("쫑긋 · 이야기 관찰 노트", M, M);
   ctx.fillStyle = C.ink;
   ctx.font = `68px ${HEAD}`;
   ctx.fillText(`${data.childCall} 요즘 이야기`, M, M + 44);
@@ -305,7 +305,7 @@ export async function makeNotePdf(data: NoteData): Promise<Blob> {
     c2.stroke();
     c2.fillStyle = C.faint;
     c2.font = `400 18px ${BODY}`;
-    c2.fillText(`상상 무전기 · ${data.childName} 이야기 관찰 노트 · 진단이 아닌 관찰 기록이에요`, M, H - 80);
+    c2.fillText(`쫑긋 · ${data.childName} 이야기 관찰 노트 · 진단이 아닌 관찰 기록이에요`, M, H - 80);
     c2.textAlign = "right";
     c2.fillText(`${i + 1} / ${pages.length}`, W - M, H - 80);
     c2.textAlign = "left";

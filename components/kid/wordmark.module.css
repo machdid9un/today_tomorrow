@@ -1,0 +1,39 @@
+/* 쫑긋 로고. 크기는 부모(로고 링크)의 font-size를 따른다. 소유: 역할 4. */
+.word {
+  position: relative;
+  isolation: isolate;
+  display: inline-flex;
+  align-items: flex-start;
+  gap: 0.02em;
+  padding-top: 0.5em; /* 귀가 솟을 자리 */
+  line-height: 1;
+}
+.jjong, .geut { display: inline-block; }
+.jjong { color: var(--wm-jjong, #f47f62); transform: rotate(-6deg); }
+.geut { color: var(--wm-geut, #6454a4); transform: translateY(0.16em) rotate(9deg); }
+
+/* 귀: 두 글자 가운데 위, 글자 뒤로 아래쪽이 숨는다 */
+.ears {
+  position: absolute;
+  z-index: -1;
+  left: 50%;
+  top: 0;
+  width: 1.6em;
+  height: auto;
+  transform: translateX(-50%);
+  overflow: visible;
+  pointer-events: none;
+}
+.earLeft, .earRight { transform-box: fill-box; }
+.earLeft { transform-origin: 80% 100%; transform: rotate(-18deg); }
+.earRight { transform-origin: 20% 100%; transform: rotate(18deg); }
+
+/* 마우스를 올리면 귀가 한 번 쫑긋 */
+a:hover > .word .earLeft, a:focus-visible > .word .earLeft { animation: perkLeft 0.6s ease-in-out; }
+a:hover > .word .earRight, a:focus-visible > .word .earRight { animation: perkRight 0.6s ease-in-out 0.08s; }
+@keyframes perkLeft { 0%, 100% { transform: rotate(-18deg); } 40% { transform: rotate(-30deg) translateY(-8%); } 70% { transform: rotate(-13deg); } }
+@keyframes perkRight { 0%, 100% { transform: rotate(18deg); } 40% { transform: rotate(30deg) translateY(-8%); } 70% { transform: rotate(13deg); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .earLeft, .earRight { animation: none !important; }
+}

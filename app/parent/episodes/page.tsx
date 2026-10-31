@@ -3,7 +3,7 @@ import type { Metadata } from "next";
 import StoryParentApp from "@/components/parent/StoryParentApp";
 import { getSeedCopy } from "@/components/parent/seedCopy";
 
-export const metadata: Metadata = { title: "이야기 기록 · 상상 무전기" };
+export const metadata: Metadata = { title: "이야기 기록 · 쫑긋" };
 
 export default function ParentEpisodesPage() {
   return <StoryParentApp seedCopy={getSeedCopy()} initialTab="library" />;

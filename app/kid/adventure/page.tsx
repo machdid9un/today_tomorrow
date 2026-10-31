@@ -4,6 +4,7 @@
 // 서버 컴포넌트인 여기서 process.env.VOICE_MODE를 읽어 클라이언트 컴포넌트에 prop으로 내려줍니다.
 // episodeId·themeId는 첫 화면(역할 4)이 /api/sessions 생성 후 쿼리스트링으로 넘깁니다.
 // 예전 화면(components/voice/VoiceSession)은 그대로 남아 있습니다. 되돌리려면 아래 AdventureStage를 VoiceSession으로 바꾸면 됩니다.
+import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import AdventureStage from "@/components/kid/AdventureStage";
 import type { VoiceMode } from "@/components/voice/types";
@@ -12,6 +13,9 @@ import { isThemeId } from "@/lib/story/themes";
 function resolveVoiceMode(): VoiceMode {
   return process.env.VOICE_MODE === "ptt" ? "ptt" : "handsfree";
 }
+
+
+export const metadata: Metadata = { title: "이야기 모험 · 쫑긋" };
 
 export default async function AdventurePage({
   searchParams,

@@ -6,6 +6,7 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import Dragon from "@/components/kid/Dragon";
+import Wordmark from "@/components/kid/Wordmark";
 import s from "./storyParent.module.css";
 import l from "./login.module.css";
 
@@ -72,7 +73,7 @@ export default function LoginScreen() {
       <div className={`${s.root} ${l.wrap}`}>
         <header className={s.top}>
           <Link href="/" className={s.brand}>
-            <span>상상</span> 무전기
+            <Wordmark />
           </Link>
           <Link href="/kid" className={l.skip}>
             로그인 없이 계속
@@ -132,7 +133,7 @@ export default function LoginScreen() {
             <section className={s.card}>
               {notice && <p className={l.notice}>{notice}</p>}
               <ol className={l.steps}>
-                <li>메일함에서 「상상 무전기」 메일을 찾아요. 안 보이면 스팸함도 봐 주세요.</li>
+                <li>메일함에서 「쫑긋」 메일을 찾아요. 안 보이면 스팸함도 봐 주세요.</li>
                 <li>메일의 로그인 링크를 누르면 이 기기의 이야기와 함께 이어져요.</li>
               </ol>
               <button type="button" className={s.btn} onClick={() => void submit()} disabled={wait > 0}>
