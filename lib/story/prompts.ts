@@ -74,6 +74,10 @@ export interface StoryPromptInput {
   planetProgress?: PlanetProgress | null;
   /** 오늘 밤 시즌 목표 한 줄 (예: '숨은 빨강 친구 찾기'). 첫 장면의 '도와 달라는 소리'가 여기로 이어진다 */
   arcGoal?: string;
+  /** 부모가 고른 '마음 담기' — 회차 내내 이야기 용의 태도 */
+  seedTone?: string | null;
+  /** 편히 쉬어가기: 더 일찍 잠자리 쪽으로 */
+  restMode?: boolean;
 }
 
 function signalHint(p: StoryPromptInput): string {
@@ -159,7 +163,7 @@ export function questionPlan(p: StoryPromptInput): string {
     parts.push("아이가 같은 말을 또 했다. 그건 아이가 그것을 정말 좋아한다는 뜻이다. 새 인물을 더 만들지 말고, 이미 나온 그 인물(물건)이 이야기의 주인공이 되어 멋진 일을 하게 한 뒤, 그것과 이어지는 아주 쉬운 두 갈래 질문을 한 문장으로 한다('A할까용, 아니면 B할까용?').");
   } else if (p.afterSeed) {
     parts.push(`아이의 선택을 이야기로 이어 주고, 그 선택을 '어떻게' 해 볼지 묻는다(예: '어떻게 도와줄까용?').${withExamples}`);
-  } else if (p.turnIndex >= WIND_DOWN_TURN) {
+  } else if (p.turnIndex >= (p.restMode ? WIND_DOWN_TURN - 1 : WIND_DOWN_TURN)) {
     parts.push(
       "이제 잠잘 시간 쪽으로 이야기를 천천히 가라앉힌다. 처음에 도와 달라고 한 일이 아직 안 풀렸으면 이번에 아이 덕분에 풀리게 한다. 새 위험이나 큰 사건은 만들지 않는다. 별빛·바람 소리 같은 조용한 장면 뒤에, 친구에게 해 줄 말이나 함께 보고 싶은 것처럼 포근하고 짧은 질문 하나를 한다(보기를 말로 늘어놓지 않는다)."
     );
@@ -245,7 +249,9 @@ export function buildStoryMessages(p: StoryPromptInput): ChatMessage[] {
     { role: "system", content: STORY_SYSTEM_PROMPT },
     {
       role: "system",
-      content: `${profile}${memoryBlock(p.memory)}\n\n${themeContext(themeFor(p.episodeKey, p.themeId), p.planetProgress)}`,
+      content: `${profile}${memoryBlock(p.memory)}\n\n${themeContext(themeFor(p.episodeKey, p.themeId), p.planetProgress)}${
+        p.seedTone ? `\n\n[오늘의 마음 담기] (부모가 고른 용의 태도. 아이에게 말하거나 시키지 않고, 이야기 속 용의 말과 행동으로만 자연스럽게) ${p.seedTone}` : ""
+      }`,
     },
   ];
 

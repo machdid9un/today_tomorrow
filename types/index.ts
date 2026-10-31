@@ -3,8 +3,9 @@
 export type Mode = "parent" | "kid";
 export type EpisodeStatus = "active" | "completed" | "interrupted";
 export type EndReason = "natural" | "sleep_request" | "silence" | "timeout" | "manual";
-// 오늘의 씨앗 = 부모가 고르는 '마음 주제' (자유 입력 custom은 기본 비활성, 역할 3 seedPresets.ts 참고)
-export type SeedPreset = "kindness" | "courage" | "promise" | "share" | "new_place" | "retry" | "custom";
+// 내일 이야기에 마음 담기(오늘의 씨앗) = 부모가 고르는 '용의 태도' 4가지 (자유 입력 custom은 기본 비활성, 역할 3 seedPresets.ts 참고)
+//   courage 용기 북돋기 · praise 칭찬해주기 · company 곁에 있어주기 · rest 편히 쉬어가기
+export type SeedPreset = "courage" | "praise" | "company" | "rest" | "custom";
 
 export interface StoryMemory {
   characters: string[];

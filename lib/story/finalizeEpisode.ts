@@ -10,7 +10,7 @@ import type { EndReason } from "@/types";
 import { loadEpisodeContext, saveMockWorld, type EpisodeContext } from "./contextStore";
 import { summarizeEpisode, type SummarizeEpisodeResult } from "./memorySummarizer";
 import { generateParentReport, type ParentReportOut } from "./reportGenerator";
-import { SEED_PRESET_SCENE_DIRECTIVES } from "./seedPresets";
+import { SEED_PRESET_PARENT_COPY, SEED_TONE_DIRECTIVES } from "./seedPresets";
 import { recommendSeeds } from "./seedRecommend";
 import { plotPatternFor } from "./plotPatterns";
 import {
@@ -65,7 +65,8 @@ function seedDirectiveFor(ctx: EpisodeContext): string | null {
   if (ctx.history.length < 3) return null; // 씨앗 장면 턴(일반 3, short 2)까지 못 갔으면 없음
   if (!ctx.seedPreset) return null;
   if (ctx.seedPreset === "custom") return ctx.seedText?.trim() || null;
-  return SEED_PRESET_SCENE_DIRECTIVES[ctx.seedPreset] ?? null;
+  const copy = SEED_PRESET_PARENT_COPY[ctx.seedPreset];
+  return copy ? `부모가 고른 마음 담기: ${copy.label} (${copy.desc}). 이야기 용의 태도: ${SEED_TONE_DIRECTIVES[ctx.seedPreset]}` : null;
 }
 
 /** 씨앗 장면 턴까지 갔는가 (갔다면 씨앗을 '썼다'고 본다 → 역할 1 complete에서 next_seed_* 비우기 기준) */
@@ -90,6 +91,7 @@ export async function finalizeEpisode(
       childName: ctx.childName,
       seedDirective: seedDirectiveFor(ctx),
       endReason,
+      theme,
     }),
     summarizeEpisode({
       turns: ctx.history,

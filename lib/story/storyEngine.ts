@@ -8,7 +8,7 @@ import { toYongStyle, withTopic } from "./persona";
 import { buildStoryMessages, CLOSING_LINE, OPENING_GUEST, type TurnMode } from "./prompts";
 import { isSafetyConcern } from "./safety";
 import { plotPatternFor } from "./plotPatterns";
-import { resolveSeedDirective } from "./seedPresets";
+import { resolveSeedDirective, seedSceneHint } from "./seedPresets";
 import { stageDirective, themeFor } from "./themes";
 
 export { isSafetyConcern };
@@ -170,13 +170,13 @@ export async function generateTurn(input: GenerateTurnInput): Promise<GeneratedT
   const theme = themeFor(ctx.episodeId, ctx.themeId);
   const planetProgress = ctx.planets[theme.id] ?? null;
   const arc = stageDirective(theme, planetProgress, plotPatternFor(ctx.episodeId));
+  // 부모가 고른 '마음 담기'(용의 태도)는 회차 내내 깔리고, 갈림길 장면에는 한 줄 힌트로 얹힌다
+  const seedTone = ctx.seedPreset ? await resolveSeedDirective(ctx.seedPreset, ctx.seedText) : null;
   let mode = decideMode(input, true);
   let seedDirective: string | null = null;
   if (mode === "seed") {
-    const parentSeed = ctx.seedPreset ? await resolveSeedDirective(ctx.seedPreset, ctx.seedText) : null;
-    seedDirective = parentSeed
-      ? `${parentSeed}\n이 장면은 ${theme.planet}에서 일어나고, 오늘 밤의 목표('${arc.goal}')로 가는 길에 생긴 일로 잇는다. 두 갈래 질문은 위 마음 주제의 갈림길로 한다.`
-      : arc.directive;
+    const hint = seedSceneHint(ctx.seedPreset);
+    seedDirective = hint ? `${arc.directive}\n오늘의 마음 담기: ${hint}` : arc.directive;
   }
   if (mode === "seed" && !seedDirective) mode = "normal";
   const canSuggestEnd = !input.short && mode === "normal" && elapsedSeconds >= SOFT_LIMIT_SEC;
@@ -209,6 +209,8 @@ export async function generateTurn(input: GenerateTurnInput): Promise<GeneratedT
           themeId: theme.id,
           planetProgress,
           arcGoal: arc.goal,
+          seedTone,
+          restMode: ctx.seedPreset === "rest",
         }),
         maxTokens: 600,
         temperature: 0.8,

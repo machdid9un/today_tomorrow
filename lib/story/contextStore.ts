@@ -39,7 +39,7 @@ export interface SaveTurnInput {
   childName: string | null;
 }
 
-const SEED_PRESETS: SeedPreset[] = ["kindness", "courage", "promise", "share", "new_place", "retry", "custom"];
+const SEED_PRESETS: SeedPreset[] = ["courage", "praise", "company", "rest", "custom"];
 
 type MemoryStore = Map<string, EpisodeContext>;
 interface MockWorld {
@@ -111,7 +111,7 @@ export async function loadEpisodeContext(episodeId: string): Promise<EpisodeCont
       childName: world?.childName ?? null,
       childAge: null,
       memory: world?.memory ?? null,
-      seedPreset: "kindness", // 로컬 테스트용: 씨앗 장면이 나오는지 확인
+      seedPreset: "company", // 로컬 테스트용: 마음 담기가 이야기에 나오는지 확인
       seedText: null,
       history: [],
       themeId: null,
