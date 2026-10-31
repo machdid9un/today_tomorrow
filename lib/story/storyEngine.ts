@@ -13,6 +13,24 @@ const SEED_TURN = 3; // 씨앗 장면 턴 (일반)
 const SHORT_SEED_TURN = 2; // 씨앗 장면 턴 (?short=1)
 const SHORT_LAST_TURN = 3; // ?short=1이면 이 턴에서 마무리
 
+/** 현실의 위험 신호(맞음·다침·스스로 해치기). 이야기 속 괴물 싸움 같은 상상과 구분하려고 "나/날/나를" 대상이 있는 표현 위주. */
+const PERSON = "(?:엄마|아빠|선생님|형|누나|언니|오빠|친구|삼촌|이모|고모|할머니|할아버지|어른|아저씨|아줌마)";
+const HURT = "(?:때려|때렸|때린|때리|괴롭혀|괴롭혔|괴롭히|꼬집|발로\\s*찼)";
+const SAFETY_PATTERN = new RegExp(
+  [
+    // "아빠가 (나를|내 머리를) 때렸어" — 때린 사람 뒤에 이/가/께서가 붙은 경우
+    `${PERSON}\\s*(?:이|가|께서)\\s*(?:나를?|날|내\\s*[가-힣]{0,3}[을를]?)?\\s*${HURT}`,
+    // "아빠 나 때렸어" — 조사 없이 바로 '나'가 오는 경우
+    `${PERSON}\\s+(?:나를?|날)\\s*${HURT}`,
+    // 스스로를 해치려는 말
+    "죽고\\s*싶|죽어\\s*버릴|사라지고\\s*싶|없어지고\\s*싶",
+  ].join("|")
+);
+
+export function isSafetyConcern(text: string): boolean {
+  return SAFETY_PATTERN.test(text.replace(/\s+/g, " "));
+}
+
 const SLEEP_PATTERN =
   /(잘래|잘게|잘\s?거야|잘\s?꺼야|졸려|졸리|자고\s?싶|잠\s?와|잠이\s?와|이제\s?자|그만\s?할래|그만\s?하고\s?싶|굿\s?나잇)/;
 
@@ -48,22 +66,31 @@ export function splitSentences(text: string): string[] {
   return parts.map((s) => s.trim()).filter(Boolean);
 }
 
-const FALLBACK_QUESTION = "대장님은 어떻게 하고 싶어?";
+const FALLBACK_QUESTION = "대장님은 어떻게 하고 싶어요?";
 const SENTENCE_END = /[.!?…~。！？]["'”’)]*$/;
 
 /**
  * TTS용 내레이션 다듬기: 잘린 마지막 문장 제거, 최대 3문장, (진행 턴이면) 질문으로 끝나게.
- * 4문장 이상이면 앞 2문장 + 마지막 질문을 남긴다.
+ * 4문장 이상이면 첫 문장 + 마지막 두 문장(질문 포함)을 남긴다.
  */
-export function trimNarration(text: string, isEnding: boolean): string {
+export function trimNarration(
+  text: string,
+  isEnding: boolean,
+  fallbackQuestion = FALLBACK_QUESTION,
+  maxSentences = 3
+): string {
   let parts = splitSentences(text);
   if (parts.length > 1 && !SENTENCE_END.test(parts[parts.length - 1])) parts = parts.slice(0, -1);
-  if (parts.length > 3) {
+  if (maxSentences >= 4 && parts.length > maxSentences) {
+    // 안전 응답: 앞의 위로·어른에게 말하기 문장을 지키고, 마지막 장면+질문을 남긴다
+    parts = [...parts.slice(0, 2), ...parts.slice(-2)];
+  } else if (maxSentences < 4 && parts.length > 3) {
     const last = parts[parts.length - 1];
-    parts = /\?["'”’)]*$/.test(last) ? [parts[0], parts[1], last] : parts.slice(0, 3);
+    // 마지막 질문이 바로 앞 문장을 가리키는 경우가 많아(예: "그건 무엇일까요?") 첫 문장 + 마지막 두 문장을 남긴다
+    parts = /\?["'”’)]*$/.test(last) ? [parts[0], ...parts.slice(-2)] : parts.slice(0, 3);
   }
   if (!isEnding && !parts.some((s) => /\?["'”’)]*$/.test(s))) {
-    parts = [...parts.slice(0, 2), FALLBACK_QUESTION];
+    parts = [...parts.slice(0, 2), fallbackQuestion];
   }
   return parts.join(" ");
 }
@@ -99,6 +126,7 @@ function cleanName(v: unknown): string | null {
 
 function decideMode(input: GenerateTurnInput, hasSeed: boolean): TurnMode {
   const { childText, turnIndex, elapsedSeconds, forceEnd, short } = input;
+  if (turnIndex > 0 && isSafetyConcern(childText)) return "safety"; // 잘래보다 먼저: 위험 신호는 꼭 받아 준다
   if (turnIndex > 0 && isSleepRequest(childText)) return "ending_sleep";
   if (forceEnd || elapsedSeconds >= HARD_LIMIT_SEC) return "ending_timeout";
   if (short && turnIndex >= SHORT_LAST_TURN) return "ending_natural";
@@ -170,6 +198,8 @@ export async function generateTurn(input: GenerateTurnInput): Promise<GeneratedT
         maxTokens: 600,
         temperature: 0.8,
         timeoutMs: 12000,
+        thinking: false, // 실시간 대화: 추론을 끄고 빠르게
+        hedgeAfterMs: 2500, // 2.5초 안에 답이 없으면 같은 요청을 하나 더 보내 먼저 온 답을 씀
       });
     } catch (err) {
       const salvaged = err instanceof LlmJsonError ? salvageTurn(err.raw) : null;
@@ -190,7 +220,14 @@ export async function generateTurn(input: GenerateTurnInput): Promise<GeneratedT
   }
 
   let narration =
-    typeof raw.narration === "string" ? trimNarration(raw.narration.trim(), shouldEnd) : "";
+    typeof raw.narration === "string"
+      ? trimNarration(
+          raw.narration.trim(),
+          shouldEnd,
+          askName ? "누가 신호를 보냈을까요?" : FALLBACK_QUESTION,
+          mode === "safety" ? 4 : 3 // 안전 응답은 '어른에게 말하기' 문장이 잘리지 않게 4문장까지
+        )
+      : "";
   if (!narration) throw new Error("EMPTY_NARRATION");
 
   let choices = Array.isArray(raw.choices)

@@ -8,7 +8,7 @@ export const SEED_PRESET_SCENE_DIRECTIVES: Record<
   string
 > = {
   friend:
-    "함께 온 동료가 다쳐서 천천히 걸을 수밖에 없는데, 저 멀리 출발하려는 배(또는 로켓)가 보이는 갈림길 장면. 동료 곁에 남을지, 먼저 갈지 대장님이 고르게 한다. 어느 쪽을 골라도 이야기는 따뜻하게 이어간다.",
+    "지금까지 이야기에 나온 친구(없으면 방금 만난 새 친구) 하나가 다쳐서 천천히 걸을 수밖에 없는데, 저 멀리 출발하려는 배(또는 로켓)가 보이는 갈림길 장면. 새 인물을 갑자기 만들지 말고 이미 나온 친구를 쓴다. 그 친구 곁에 남을지, 먼저 갈지 대장님이 고르게 한다. 어느 쪽을 골라도 이야기는 따뜻하게 이어간다.",
   school:
     "섬의 작은 탐험대 학교에 처음 들어가는 장면. 낯선 친구들이 각자 무언가를 하고 있고, 대장님이 무엇부터 해 볼지 고르게 한다. 실제 학교·학원 이야기는 꺼내지 않는다.",
   sibling:
@@ -43,6 +43,7 @@ export async function convertFreeTextSeedToDirective(
       maxTokens: 400,
       temperature: 0.5,
       timeoutMs: 8000,
+      thinking: false,
     });
     return typeof out.directive === "string" ? out.directive.trim() : "";
   } catch (err) {

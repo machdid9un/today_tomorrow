@@ -411,13 +411,13 @@ function buildSystemPrompt(callName: string): string {
 
 1) worldMemory — 다음 모험에서 이어 쓸 이야기 세계의 기억
 - characters, items, places: [지난 모험의 기억]과 이번 모험을 합친 목록. 각각 최대 6개, 짧은 이름으로(예: "노랑이(노란 아기 용)", "종이 로켓", "구름 섬"). 대장님이 직접 이름을 붙였거나 아끼고 챙긴 것을 앞에 둔다. 지난 기억 중 이번에 다시 나왔거나 대장님이 좋아한 것은 남긴다. 같은 대상은 한 번만 쓴다.
-- keyEvents: 이번 모험에서 대장님이 한 일만 1~3개, 시간 순서대로. 짧은 과거형 문장(예: "대장님이 다친 노랑이에게 붕대를 감아 주었다"). 지난 사건은 다시 쓰지 않는다.
+- keyEvents: 이번 모험에서 대장님이 한 일만 1~3개, 시간 순서대로. 짧은 과거형 문장(예: "대장님이 다친 노랑이에게 붕대를 감아 주었다"). 지난 사건은 다시 쓰지 않는다. 졸려서 잠든 일, 무전을 끝낸 일 같은 마무리 장면은 넣지 않는다. 대화에 [메모]로 "대답하지 않았다"고 적힌 질문의 선택은 기억에도 동화책에도 쓰지 않는다. 대장님이 하지 않은 선택이나 결말을 지어내지 않는다.
 - nextHook: 다음 모험의 첫 장면이 이어받을 수 있는 한 문장(예: "노랑이가 새 친구를 데려오기로 했다").
 - 이야기 세계의 내용만 쓴다. 대장님이 말했더라도 현실 정보(학교·유치원·학원 이름, 주소, 전화번호, 가족·친구와의 다툼이나 고민, 현실의 사람 이야기)는 절대 넣지 않는다.
 
 2) storybookText — 그림책 본문
 - 이번 모험을 짧은 그림책 글로 다시 쓴다. 쉬운 반말 동화체("~했어", "~였지").
-- 짧은 문단 6~12개. 문단 사이는 빈 줄(JSON 문자열 안에서는 \\n\\n). 한 문단은 1~3문장.
+- 짧은 문단 5~8개. 문단 사이는 빈 줄(JSON 문자열 안에서는 \\n\\n). 한 문단은 1~3문장.
 - 말하면서 생긴 반복·더듬음·군말은 다듬되, 대장님의 아이디어와 선택은 바꾸지 않는다. 대장님이 고른 것, 지은 이름, 한 행동은 하나도 빠짐없이 그대로 넣는다. 대장님이 하지 않은 선택을 지어내지 않는다.
 - 아이는 "${callName}" 또는 "대장님"이라고 부른다.
 - 이름을 묻고 답한 부분, 무전기 마지막 인사("${CLOSING_LINE}"), 듣는 사람에게 묻는 질문이나 선택지는 넣지 않는다. 질문 없이 포근하게 끝낸다.
@@ -430,13 +430,24 @@ function buildSystemPrompt(callName: string): string {
 {"worldMemory": {"characters": ["..."], "items": ["..."], "places": ["..."], "keyEvents": ["..."], "nextHook": "..."}, "storybookText": "...", "islandTitle": "...", "episodeTitle": "..."}`;
 }
 
-function transcriptLines(turns: TurnRecord[]): string[] {
+/**
+ * LLM에 줄 대화 기록.
+ * - 게스트 1화의 이름 묻고 답하기(turn 0 내레이션, turn 1 대답)는 빼서 동화책·기억에 들어가지 않게 한다.
+ * - 마지막 질문에 아이가 답하지 않고 끝났으면(침묵·잠듦) 그 선택을 지어내지 않도록 [메모]를 붙인다.
+ */
+function transcriptLines(turns: TurnRecord[], skipNameQA: boolean): string[] {
   const lines: string[] = [];
-  for (const t of turns.slice(-TRANSCRIPT_MAX_TURNS)) {
-    const child = collapse(textOf(t.childText));
-    const narration = collapse(removeSignOff(textOf(t.narration)));
+  const offset = Math.max(0, turns.length - TRANSCRIPT_MAX_TURNS);
+  turns.slice(offset).forEach((t, k) => {
+    const index = offset + k;
+    const child = skipNameQA && index === 1 ? "" : collapse(textOf(t.childText));
+    const narration = skipNameQA && index === 0 ? "" : collapse(removeSignOff(textOf(t.narration)));
     if (child) lines.push(`[대장님] ${clip(child, TRANSCRIPT_LINE_MAX)}`);
     if (narration) lines.push(`[무전기] ${clip(narration, TRANSCRIPT_LINE_MAX)}`);
+  });
+  const lastNarration = collapse(removeSignOff(textOf(turns[turns.length - 1]?.narration)));
+  if (/[?？]["'”’)]*$/.test(lastNarration)) {
+    lines.push("[메모] 마지막 질문에 대장님은 대답하지 않았다(잠들었거나 대화가 끝남). 그 질문의 선택은 정해지지 않았다.");
   }
   return lines;
 }
@@ -445,7 +456,8 @@ function buildMessages(
   turns: TurnRecord[],
   prev: StoryMemory,
   callName: string,
-  episodeNumber: number
+  episodeNumber: number,
+  skipNameQA: boolean
 ): ChatMessage[] {
   const memoryText = isEmptyMemory(prev) ? "없음 (첫 모험)" : JSON.stringify(prev, null, 2);
   const user = [
@@ -456,7 +468,7 @@ function buildMessages(
     memoryText,
     "",
     "[이번 모험 대화] (위에서 아래로 시간 순서)",
-    ...transcriptLines(turns),
+    ...transcriptLines(turns, skipNameQA),
     "",
     "규칙대로 JSON 하나만 출력해.",
   ].join("\n");
@@ -514,10 +526,11 @@ export async function summarizeEpisode(input: SummarizeEpisodeInput): Promise<Su
   // 3) LLM 1회 호출. 네트워크·HTTP·JSON 파싱 실패는 그대로 throw.
   const raw = await chatJSON<unknown>({
     model: REPORT_MODEL,
-    messages: buildMessages(turns, prev, callName, episodeNumber),
-    maxTokens: 2500,
+    messages: buildMessages(turns, prev, callName, episodeNumber, nameAsked),
+    maxTokens: 5000,
     temperature: 0.6,
     timeoutMs: 30000,
+    thinking: false, // 동화책·기억 정리는 추론 없이도 충분하고 9초→수 초로 빨라짐 (노트는 추론 유지)
   });
   if (!isRecord(raw)) throw new Error("SUMMARY_INVALID: not a JSON object");
 
