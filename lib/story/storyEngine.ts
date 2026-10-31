@@ -5,31 +5,16 @@ import type { EpisodeContext } from "./contextStore";
 import { chatJSON, hasLlmKey, LlmJsonError, STORY_MODEL } from "./llm";
 import { detectChildName } from "./memorySummarizer";
 import { buildStoryMessages, CLOSING_LINE, OPENING_GUEST, type TurnMode } from "./prompts";
+import { isSafetyConcern } from "./safety";
 import { resolveSeedDirective } from "./seedPresets";
+
+export { isSafetyConcern };
 
 const SOFT_LIMIT_SEC = 5 * 60; // 이후 AI가 자연스러운 마무리 제안 가능
 const HARD_LIMIT_SEC = 10 * 60; // 하드 타임아웃
 const SEED_TURN = 3; // 씨앗 장면 턴 (일반)
 const SHORT_SEED_TURN = 2; // 씨앗 장면 턴 (?short=1)
 const SHORT_LAST_TURN = 3; // ?short=1이면 이 턴에서 마무리
-
-/** 현실의 위험 신호(맞음·다침·스스로 해치기). 이야기 속 괴물 싸움 같은 상상과 구분하려고 "나/날/나를" 대상이 있는 표현 위주. */
-const PERSON = "(?:엄마|아빠|선생님|형|누나|언니|오빠|친구|삼촌|이모|고모|할머니|할아버지|어른|아저씨|아줌마)";
-const HURT = "(?:때려|때렸|때린|때리|괴롭혀|괴롭혔|괴롭히|꼬집|발로\\s*찼)";
-const SAFETY_PATTERN = new RegExp(
-  [
-    // "아빠가 (나를|내 머리를) 때렸어" — 때린 사람 뒤에 이/가/께서가 붙은 경우
-    `${PERSON}\\s*(?:이|가|께서)\\s*(?:나를?|날|내\\s*[가-힣]{0,3}[을를]?)?\\s*${HURT}`,
-    // "아빠 나 때렸어" — 조사 없이 바로 '나'가 오는 경우
-    `${PERSON}\\s+(?:나를?|날)\\s*${HURT}`,
-    // 스스로를 해치려는 말
-    "죽고\\s*싶|죽어\\s*버릴|사라지고\\s*싶|없어지고\\s*싶",
-  ].join("|")
-);
-
-export function isSafetyConcern(text: string): boolean {
-  return SAFETY_PATTERN.test(text.replace(/\s+/g, " "));
-}
 
 const SLEEP_PATTERN =
   /(잘래|잘게|잘\s?거야|잘\s?꺼야|졸려|졸리|자고\s?싶|잠\s?와|잠이\s?와|이제\s?자|그만\s?할래|그만\s?하고\s?싶|굿\s?나잇)/;
@@ -81,6 +66,14 @@ export function trimNarration(
 ): string {
   let parts = splitSentences(text);
   if (parts.length > 1 && !SENTENCE_END.test(parts[parts.length - 1])) parts = parts.slice(0, -1);
+  // 질문 + 예시("누가 보냈을까요? 아기 용일까요, 아기 고래일까요?")는 한 덩어리로 지킨다
+  const isQ = (s: string) => /\?["'”’)]*$/.test(s);
+  const n = parts.length;
+  if (maxSentences < 4 && n >= 4 && isQ(parts[n - 1]) && isQ(parts[n - 2])) {
+    const body = parts.slice(0, -2);
+    const keptBody = body.length > 2 ? [body[0], body[body.length - 1]] : body;
+    return [...keptBody, ...parts.slice(-2)].join(" ");
+  }
   if (maxSentences >= 4 && parts.length > maxSentences) {
     // 안전 응답: 앞의 위로·어른에게 말하기 문장을 지키고, 마지막 장면+질문을 남긴다
     parts = [...parts.slice(0, 2), ...parts.slice(-2)];
@@ -144,16 +137,16 @@ function endingReasonFor(mode: TurnMode): EndReason | null {
 /** 키가 없을 때(로컬 개발) 쓰는 가짜 턴. 계약 형태는 실제와 동일. */
 function mockTurn(mode: TurnMode, turnIndex: number): RawTurn {
   if (mode.startsWith("ending")) {
-    return { narration: "노란 용은 대장님 덕분에 다시 하늘을 날 수 있게 됐어.", choices: [] };
+    return { narration: "노란 용은 대장님 덕분에 다시 하늘을 날 수 있게 됐어요.", choices: [] };
   }
   if (mode === "seed") {
     return {
-      narration: "용이 날개를 다쳐서 천천히 걸어. 그런데 저 멀리 로켓이 떠나려고 해. 용 옆에 남을래, 로켓을 탈래?",
+      narration: "용이 날개를 다쳐서 천천히 걸어요. 그런데 저 멀리 로켓이 떠나려고 해요. 용 옆에 남을까요, 아니면 로켓을 탈까요?",
       choices: ["용 옆에 남기", "로켓 타기"],
     };
   }
   return {
-    narration: `(${turnIndex}턴) 무전기에서 지직 소리가 났어. 저 멀리 노란 용이 손을 흔들고 있어. 용한테 뭐라고 말해 볼까?`,
+    narration: `(${turnIndex}턴) 무전기에서 지직 소리가 났어요. 저 멀리 노란 용이 손을 흔들고 있어요. 용한테 뭐라고 말해 볼까요?`,
     choices: ["인사하기", "숨어서 보기"],
     childName: turnIndex === 1 ? "지우" : null,
   };
@@ -194,6 +187,9 @@ export async function generateTurn(input: GenerateTurnInput): Promise<GeneratedT
           canSuggestEnd,
           seedDirective,
           askName,
+          short: input.short,
+          afterSeed: Boolean(ctx.seedPreset) && turnIndex === (input.short ? SHORT_SEED_TURN : SEED_TURN) + 1,
+          episodeKey: ctx.episodeId,
         }),
         maxTokens: 600,
         temperature: 0.8,
