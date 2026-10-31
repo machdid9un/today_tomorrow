@@ -1,11 +1,12 @@
-// 랜딩 / 게스트 시작. 소유: 역할 4.
-// TODO(역할 4): 화면 중앙 "무전기 켜기" CTA(주황), 우상단 작은 "로그인" 링크.
-// TODO(역할 4): "무전기 켜기" 클릭 시 POST /api/sessions 호출 → /kid/adventure 이동.
+// 랜딩 / 게스트 시작 = 첫 화면. 소유: 역할 4.
+// 용이 머무는 별 + 큰 시작 버튼("이야기 용 만나기") → 오늘의 별 고르기 → POST /api/sessions → /kid/adventure.
+import { Suspense } from "react";
+import FrontDoor from "@/components/kid/FrontDoor";
 
 export default function LandingPage() {
   return (
-    <main>
-      {/* TODO: 랜딩 UI 구현 */}
-    </main>
+    <Suspense>
+      <FrontDoor />
+    </Suspense>
   );
 }

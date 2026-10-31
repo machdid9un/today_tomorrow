@@ -1,22 +1,59 @@
+@import url("https://fonts.googleapis.com/css2?family=Jua&family=Noto+Sans+KR:wght@400;500;600;700&display=swap");
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-/* 디자인 토큰 (역할 4 소유, README §6 참고) */
+/* 디자인 토큰: 'story-planets' 시안 (README §6 역할 4). tailwind.config.ts 색 이름과 같은 값 */
 :root {
-  --color-night: #171c3a; /* 밤 */
-  --color-paper: #ffffff; /* 종이 */
-  --color-ink: #1b1f2e; /* 잉크 */
-  --color-signal: #ff7a1a; /* 주황 - 말하기·한마디 CTA 전용 */
-  --color-sky: #7ad7ff; /* 하늘 - 신호 표시 전용 */
+  --color-night: #20213d; /* 밤 (아이 화면 바탕) */
+  --color-cream: #fff4df; /* 크림 (밤 위 글자, 부모 화면 바탕) */
+  --color-paper: #fffaf2; /* 종이 (카드) */
+  --color-ink: #20213d; /* 잉크 (밝은 바탕 위 글자) */
+  --color-muted: #565073; /* 보조 글자 */
+  --color-coral: #ff876e; /* CTA. CTA 글자는 남색 */
+  --color-lavender: #b6abd9;
+  --color-star: #ffe2a2;
 
-  --font-display: "Jua", sans-serif;
-  --font-sans: "Noto Sans KR", sans-serif;
-  --font-mono: "IBM Plex Mono", monospace;
+  /* 이야기 용 팔레트 */
+  --yong-coral: #f47f62;
+  --yong-purple: #6454a4;
+  --yong-yellow: #ffe08a;
+  --yong-sky: #b8dfeb;
+
+  --font-display: "Jua", ui-rounded, sans-serif;
+  --font-body: "Noto Sans KR", ui-sans-serif, system-ui, sans-serif;
 }
 
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+html,
 body {
+  overflow-x: clip;
+}
+body {
+  margin: 0;
   background-color: var(--color-paper);
   color: var(--color-ink);
-  font-family: var(--font-sans);
+  font-family: var(--font-body);
+  -webkit-font-smoothing: antialiased;
+  word-break: keep-all;
+}
+:focus-visible {
+  outline: 3px solid var(--color-star);
+  outline-offset: 3px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }
