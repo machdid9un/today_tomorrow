@@ -1,6 +1,7 @@
 "use client";
 // 지속 마이크 세션 + VAD + 턴 재생 루프 UI. 소유: 역할 2.
 // VOICE_MODE=handsfree|ptt 분기, 종료 3조건, 선택지 버튼 폴백을 여기서 묶습니다(README §4·§6).
+import { useState } from "react";
 import { useVoiceAdventure } from "./useVoiceAdventure";
 import ChoiceFallback from "./ChoiceFallback";
 import type { VoiceMode } from "./types";
@@ -22,7 +23,47 @@ const PHASE_LABEL: Record<string, string> = {
   error: "잠깐 멈췄어요",
 };
 
+function randomTag(length = 8): string {
+  const letters = "abcdefghijklmnopqrstuvwxyz0123456789";
+  return Array.from({ length }, () => letters[Math.floor(Math.random() * letters.length)]).join("");
+}
+
+/**
+ * 역할 3의 mock 메모리 저장소(lib/story/contextStore.ts)는 서버 프로세스 메모리에 쌓여서
+ * 브라우저 새로고침으로 안 지워진다. 새 랜덤 태그로 완전히 새 mock 세계를 만들어 리셋한다.
+ * 실제(DB) episodeId로 테스트 중이었어도, 기존 회차를 지우는 게 아니라 새 mock 회차로 전환만 한다.
+ */
+function freshMockEpisodeId(): string {
+  return `mock-${randomTag()}-1`;
+}
+
+/**
+ * episodeId를 key로 써서, 초기화 시 하위 트리를 완전히 새로 마운트한다.
+ * (useVoiceAdventure 내부의 모든 state/ref/마이크 스트림/타이머가 깨끗하게 리셋됨)
+ */
 export default function VoiceSession({ episodeId, mode }: VoiceSessionProps) {
+  const [currentEpisodeId, setCurrentEpisodeId] = useState(episodeId);
+
+  const handleReset = () => {
+    if (!window.confirm("지금까지의 대화를 초기화하고 새 모험으로 시작할까요?")) return;
+    setCurrentEpisodeId(freshMockEpisodeId());
+  };
+
+  return (
+    <VoiceSessionInner
+      key={currentEpisodeId}
+      episodeId={currentEpisodeId}
+      mode={mode}
+      onReset={handleReset}
+    />
+  );
+}
+
+interface VoiceSessionInnerProps extends VoiceSessionProps {
+  onReset: () => void;
+}
+
+function VoiceSessionInner({ episodeId, mode, onReset }: VoiceSessionInnerProps) {
   const {
     phase,
     errorMessage,
@@ -44,16 +85,30 @@ export default function VoiceSession({ episodeId, mode }: VoiceSessionProps) {
         <span className="text-sm text-sky">
           {PHASE_LABEL[phase] ?? phase}
         </span>
-        {phase !== "idle" && phase !== "ended" && (
+        <div className="flex items-center gap-3">
+          {phase !== "idle" && phase !== "ended" && (
+            <button
+              type="button"
+              onClick={endManually}
+              className="text-xs text-ink/50 underline"
+            >
+              오늘은 그만할래
+            </button>
+          )}
+          {/* 개발/테스트용: mock 메모리는 새로고침으로 안 지워져서 수동 초기화가 필요함 */}
           <button
             type="button"
-            onClick={endManually}
+            onClick={onReset}
             className="text-xs text-ink/50 underline"
           >
-            오늘은 그만할래
+            대화 초기화
           </button>
-        )}
+        </div>
       </div>
+
+      <p className="text-[11px] text-ink/40">
+        테스트용 episodeId: {episodeId}
+      </p>
 
       {phase === "idle" && (
         <button
