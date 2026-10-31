@@ -96,8 +96,8 @@ export async function buildSttKeyterms(
   themeId?: string | null,
   realtime = false
 ): Promise<string[]> {
-  const maxCount = realtime ? 50 : 150;
-  const maxLen = realtime ? 20 : 50;
+  const maxCount = realtime ? 50 : 100; // 100개를 넘기면 요청당 최소 20초로 과금된다
+  const maxLen = realtime ? 20 : 49; // 배치는 50자 '미만'
   const terms: string[] = [...choices];
   let theme = themeFor(episodeId ?? "", themeId);
   try {
@@ -115,7 +115,7 @@ export async function buildSttKeyterms(
   }
   terms.push(...themeSttWords(theme, true), ...STT_COMMON_CORE, ...themeSttWords(theme), ...STT_COMMON_MORE);
   const clean = terms
-    .map((t) => t.replace(/\(.*?\)/g, "").replace(/[.?!,]/g, "").trim())
+    .map((t) => t.replace(/\(.*?\)/g, "").replace(/[.?!,<>{}\[\]\\]/g, "").trim()) // < > { } [ ] \ 는 keyterms 금지 문자
     .filter((t) => t.replace(/\s/g, "").length >= 2 && t.length <= maxLen && t.split(/\s+/).length <= 5);
   return [...new Set(clean)].slice(0, maxCount);
 }

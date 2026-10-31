@@ -54,22 +54,30 @@ export async function POST(request: Request) {
       /* 보기 파싱 실패해도 keyterms 없이 진행 */
     }
   }
+  let keyterms: string[] = [];
   if (typeof episodeId === "string" && episodeId) {
     try {
-      const keyterms = await buildSttKeyterms(episodeId, choices, typeof themeId === "string" ? themeId : null);
+      keyterms = await buildSttKeyterms(episodeId, choices, typeof themeId === "string" ? themeId : null);
       for (const term of keyterms) upstreamForm.append("keyterms", term);
     } catch {
       /* keyterms 준비 실패해도 전사 자체는 계속한다 */
     }
   }
 
+  const callUpstream = (body: FormData) =>
+    fetch("https://api.elevenlabs.io/v1/speech-to-text", { method: "POST", headers: { "xi-api-key": apiKey }, body });
+
   let upstreamRes: Response;
   try {
-    upstreamRes = await fetch("https://api.elevenlabs.io/v1/speech-to-text", {
-      method: "POST",
-      headers: { "xi-api-key": apiKey },
-      body: upstreamForm,
-    });
+    upstreamRes = await callUpstream(upstreamForm);
+    // keyterms가 거부되면(400) keyterms 없이 한 번 더 — 낱말 힌트 때문에 전사 자체가 막히면 안 된다
+    if (!upstreamRes.ok && keyterms.length && upstreamRes.status < 500) {
+      console.warn(`[transcribe] upstream ${upstreamRes.status} with keyterms → retry without keyterms`);
+      const plain = new FormData();
+      plain.append("file", audio, "utterance");
+      plain.append("model_id", "scribe_v2");
+      upstreamRes = await callUpstream(plain);
+    }
   } catch {
     return NextResponse.json(
       { error: { code: "UPSTREAM_UNREACHABLE", message: "STT 서버에 연결할 수 없습니다." } },
