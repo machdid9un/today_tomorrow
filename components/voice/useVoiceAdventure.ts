@@ -416,7 +416,7 @@ export function useVoiceAdventure({ episodeId, mode, themeId }: UseVoiceAdventur
     setErrorMessage(null);
     setPhase("requesting-permission");
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
       streamRef.current = stream;
     } catch {
       // 마이크가 없어도 이야기는 시작한다: 용의 말은 TTS로 나오고, 아이는 버튼이나 글로 대답한다.
