@@ -45,7 +45,9 @@ export function toYongStyle(text: string): string {
         : seg
             .replace(/요(?=\s*[,.!?…~]|\s*$)/g, "용")
             .replace(/요용/g, "용") // 모델이 '불러요용'처럼 겹쳐 쓴 경우
-            .replace(/구나용/g, "구나") // 반말 감탄 뒤 '용'은 어색해서 뺀다
+            // 반말 감탄 '~구나'는 해요체 '~네요'에 해당 → '~네용' ("감겼구나." → "감겼네용.")
+            .replace(/구나용/g, "네용")
+            .replace(/구나(?=\s*[,.!?…~]|\s*$)/g, "네용")
     )
     .join("");
 }

@@ -28,7 +28,7 @@ export default function AdventureStage(props: AdventureStageProps) {
 }
 
 function Stage({ episodeId, mode, themeId, onReset }: AdventureStageProps & { onReset: () => void }) {
-  const { phase, errorMessage, choices, narrationLog, start, startRecording, stopRecording, submitChoice, endManually } = useVoiceAdventure({ episodeId, mode });
+  const { phase, errorMessage, choices, narrationLog, start, startRecording, stopRecording, submitChoice, endManually } = useVoiceAdventure({ episodeId, mode, themeId: themeId ?? undefined });
   const planet = PLANETS.find((p) => p.id === themeId) ?? null;
   const autoStarted = useRef(false);
   const isMock = episodeId.startsWith("mock-");

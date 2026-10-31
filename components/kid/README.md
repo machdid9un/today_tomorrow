@@ -26,7 +26,8 @@
 | `KidShell` | 모험 화면 바탕 | `<KidShell>…</KidShell>` — 밤하늘 + 별 + 머리(부모님 버튼). 원하면 감싸서 쓰세요 |
 | `Dragon` | 아무 데나 | `<Dragon className="…" />` — 눈동자가 손가락·마우스를 따라봐요 |
 
-- 첫 `/api/story/turn` 요청에 실을 `themeId`는 `AdventureStage`가 prop으로 받고 있어요. `useVoiceAdventure`가 받아서 요청에 실어 주면 돼요 (`forest | waterfire | upside | rainbow`).
+- `themeId`: 우리별에서 머무는 별이 모험 주소 `?themeId=`로 넘어가고, `AdventureStage`가 `useVoiceAdventure`에 넘겨 첫 턴 요청에 실려요 (main의 themeId 추가 반영).
+- 리드의 임시 테스트 화면(`/kid` 별 고르기 + 짧게 테스트하기)은 이 첫 화면으로 바꿨어요. 3턴 짧은 회차는 `/kid?short=1`로 들어가면 돼요.
 - 마이크가 첫 턴 전에 실패하면 "아래 버튼으로 골라볼까?"가 나오는데 아직 선택지가 없어서 고를 버튼이 없어요. 첫 턴(오프닝)은 마이크 없이도 받아 오면 좋겠어요.
 
 ## 역할 1에게 — 필요한 것

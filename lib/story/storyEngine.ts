@@ -61,8 +61,8 @@ const FALLBACK_QUESTION = "너는 어떻게 하고 싶어용?";
 const SENTENCE_END = /[.!?…~。！？]["'”’)]*$/;
 
 /**
- * TTS용 내레이션 다듬기: 잘린 마지막 문장 제거, 최대 3문장, (진행 턴이면) 질문으로 끝나게.
- * 4문장 이상이면 첫 문장 + 마지막 두 문장(질문 포함)을 남긴다.
+ * TTS용 내레이션 다듬기: 잘린 마지막 문장 제거, 최대 maxSentences문장, (진행 턴이면) 질문으로 끝나게.
+ * 넘치면 첫 문장 + 끝부분(질문 포함)을 남긴다.
  */
 export function trimNarration(
   text: string,
@@ -81,9 +81,13 @@ export function trimNarration(
     return [...keptBody, ...parts.slice(-2)].join(" ");
   }
   if (maxSentences >= 4 && parts.length > maxSentences) {
-    // 안전 응답: 앞의 위로·어른에게 말하기 문장을 지키고, 마지막 장면+질문을 남긴다
-    const adult = parts.findIndex((x, i) => i >= 2 && i < parts.length - 2 && /(어른|선생님)/.test(x));
-    parts = adult >= 0 ? [parts[0], parts[adult], ...parts.slice(-2)] : [...parts.slice(0, 2), ...parts.slice(-2)];
+    // 첫 문장(아이 말의 결과)과 끝부분(장면 → 질문)을 지킨다. 질문 바로 앞 장면이 빠지면 질문이 뜬금없어진다.
+    // 안전 응답이면 '어른에게 말하기' 문장도 지킨다.
+    const adult = parts.findIndex((x, i) => i >= 1 && i < parts.length - 2 && /(어른|선생님)/.test(x));
+    parts =
+      adult >= 0
+        ? [parts[0], parts[adult], ...parts.slice(-(maxSentences - 2))]
+        : [parts[0], ...parts.slice(-(maxSentences - 1))];
   } else if (maxSentences < 4 && parts.length > 3) {
     const last = parts[parts.length - 1];
     // 마지막 질문이 바로 앞 문장을 가리키는 경우가 많아(예: "그건 무엇일까요?") 첫 문장 + 마지막 두 문장을 남긴다
@@ -210,8 +214,12 @@ export async function generateTurn(input: GenerateTurnInput): Promise<GeneratedT
           short: input.short,
           afterSeed: turnIndex === (input.short ? SHORT_SEED_TURN : SEED_TURN) + 1,
           episodeKey: ctx.episodeId,
-          // 갈림길 다음 턴부터: 오늘의 별 시즌 단계의 해결 방향 (부모 씨앗이 있어도 오늘의 목표는 풀리게)
-          plotResolve: turnIndex > (input.short ? SHORT_SEED_TURN : SEED_TURN) ? arc.resolve : undefined,
+          // 갈림길 바로 다음 턴에만: 오늘의 별 시즌 단계의 해결 방향 (부모 씨앗이 있어도 오늘의 목표는 풀리게).
+          // 주의: 턴마다 매번 같은 resolve 문구를 다시 주면, 모델이 "아직 안 풀렸다"로 오해하고
+          // 이미 끝난 장면(예: "징검돌이 놓였다")을 매 턴 또 narration으로 반복해 이야기가 헛돈다.
+          // 한 번만 주고, 그 뒤는 대화 기록 + questionPlan(afterSeed/WIND_DOWN 등)이 자연스럽게 이어가게 한다.
+          plotResolve:
+            turnIndex === (input.short ? SHORT_SEED_TURN : SEED_TURN) + 1 ? arc.resolve : undefined,
           themeId: theme.id,
           planetProgress,
           arcGoal: arc.goal,
@@ -253,7 +261,7 @@ export async function generateTurn(input: GenerateTurnInput): Promise<GeneratedT
               ? "이 친구 이름을 뭐라고 지어 줄까용?"
               : `${withTopic(ctx.childName)} 어떻게 하고 싶어용?`,
           // 안전 응답('어른에게 말하기')과 갈림길 장면(받아 주기 + 장면 설명 + 질문)은 잘리지 않게 4문장까지
-          mode === "safety" || mode === "seed" ? 4 : 3
+          mode === "safety" || mode === "seed" ? 5 : 4
         )
       : "";
   if (!narration) throw new Error("EMPTY_NARRATION");
