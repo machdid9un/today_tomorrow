@@ -1,8 +1,25 @@
-// POST /api/story/turn — episodeId, childText → SSE(sentence / turn_complete / error). 소유: 역할 3.
-import { NextResponse } from "next/server";
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
-export async function POST(_request: Request) {
-  // TODO(역할 3): generateTurn 호출, 문장 단위 SSE 스트리밍으로 변환.
-  // event: sentence / event: turn_complete / event: error (README §8 이벤트 포맷 참고)
-  return NextResponse.json({ error: "Not implemented" }, { status: 501 });
+const MOCK = ["무전기에서 지직 소리가 났어.", "저 멀리 노란 용이 손을 흔들고 있어.", "용한테 뭐라고 말해 볼까?"];
+
+export async function POST(request: Request) {
+  await request.json().catch(() => ({}));
+  const enc = new TextEncoder();
+  const send = (event: string, data: unknown) =>
+    enc.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+
+  const stream = new ReadableStream({
+    async start(c) {
+      for (let i = 0; i < MOCK.length; i++) {
+        c.enqueue(send("sentence", { index: i, text: MOCK[i] }));
+        await new Promise((r) => setTimeout(r, 300));
+      }
+      c.enqueue(send("turn_complete", { choices: ["인사하기", "숨어서 보기"], shouldEnd: false, endingReason: null }));
+      c.close();
+    },
+  });
+  return new Response(stream, {
+    headers: { "Content-Type": "text/event-stream; charset=utf-8", "Cache-Control": "no-cache, no-transform", Connection: "keep-alive" },
+  });
 }
