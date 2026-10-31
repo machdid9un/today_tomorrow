@@ -4,6 +4,7 @@
 // - isLikelySttHallucination: 조용하거나 시끄러울 때 STT가 지어내는 문장("시청해 주셔서 감사합니다" 등)을 걸러 낸다.
 import { loadEpisodeContext } from "./contextStore";
 import { splitSentences } from "./storyEngine";
+import { themeFor, themeSttWords } from "./themes";
 
 const HALLUCINATION_PATTERNS: RegExp[] = [
   /시청\s*해\s*주셔서\s*감사/,
@@ -30,18 +31,25 @@ export function isLikelySttHallucination(text: string): boolean {
   return false;
 }
 
-const PROMPT_MAX = 400;
+// whisper-1은 prompt의 '뒤쪽' 약 224토큰만 쓴다(한국어는 글자당 토큰이 많음). 그래서 짧게 자르고,
+// 덜 중요한 테마 낱말을 앞에, 가장 중요한 방금 질문·보기를 맨 뒤에 둔다.
+const PROMPT_MAX = 260;
 
 /**
- * STT 맥락 프롬프트. 마지막 무전기 질문 + 화면 보기 + 알려진 이름들.
+ * STT 맥락 프롬프트 = 이번 섬 테마 낱말 + 아이 이름·등장인물 + 방금 질문 + 화면 보기.
  * OpenAI 전사 API의 prompt 필드에 그대로 넣는다(whisper-1, gpt-4o-mini-transcribe 모두 지원).
- * 실패하면 기본 문구만 돌려준다(전사를 막지 않음).
+ * 실패해도 기본 문구는 돌려준다(전사를 막지 않음).
  */
-export async function buildSttPrompt(episodeId: string | null | undefined, choices: string[] = []): Promise<string> {
-  const base = "어린아이가 잠자리 무전기 놀이에서 짧게 대답하는 말입니다.";
+export async function buildSttPrompt(
+  episodeId: string | null | undefined,
+  choices: string[] = [],
+  themeId?: string | null
+): Promise<string> {
+  const base = "아이가 무전기 놀이에서 짧게 대답한 말.";
   if (!episodeId) return base;
   try {
     const ctx = await loadEpisodeContext(episodeId);
+    const theme = themeFor(episodeId, themeId);
     const last = ctx.history[ctx.history.length - 1]?.narration ?? "";
     const question = splitSentences(last).filter((s) => /\?/.test(s)).pop() ?? "";
     const names = [
@@ -51,15 +59,52 @@ export async function buildSttPrompt(episodeId: string | null | undefined, choic
     ]
       .map((s) => s.replace(/\(.*?\)/g, "").trim())
       .filter(Boolean)
-      .slice(0, 8);
-    const parts = [
-      base,
-      question ? `방금 질문: ${question}` : "",
-      choices.length ? `보기: ${choices.slice(0, 3).join(", ")}` : "",
-      names.length ? `이름: ${names.join(", ")}` : "",
-    ].filter(Boolean);
-    return parts.join(" ").slice(0, PROMPT_MAX);
+      .slice(0, 6);
+    const tail = [
+      names.length ? `이름: ${names.join(", ")}.` : "",
+      question ? `질문: ${question}` : "",
+      choices.length ? `대답 예: ${choices.slice(0, 3).join(", ")}.` : "",
+    ]
+      .filter(Boolean)
+      .join(" ");
+    // 남는 자리만큼 테마 낱말을 앞에 채운다
+    let head = `${base} 낱말: `;
+    for (const w of themeSttWords(theme)) {
+      if ((head + w + ", " + tail).length > PROMPT_MAX) break;
+      head += `${w}, `;
+    }
+    return `${head.replace(/,\s*$/, ".")} ${tail}`.trim().slice(-PROMPT_MAX);
   } catch {
     return base;
   }
+}
+
+/**
+ * ElevenLabs Scribe v2용 keyterms(낱말 목록). 배치: 최대 1,000개·각 50자·5단어 / 실시간: 최대 50개·각 20자.
+ * 우선순위: 화면 보기 → 아이 이름·지은 이름 → 테마 낱말. realtime=true면 실시간 한도에 맞춘다.
+ */
+export async function buildSttKeyterms(
+  episodeId: string | null | undefined,
+  choices: string[] = [],
+  themeId?: string | null,
+  realtime = false
+): Promise<string[]> {
+  const maxCount = realtime ? 50 : 100;
+  const maxLen = realtime ? 20 : 50;
+  const terms: string[] = [...choices];
+  try {
+    if (episodeId) {
+      const ctx = await loadEpisodeContext(episodeId);
+      if (ctx.childName) terms.push(ctx.childName, `${ctx.childName} 대장님`);
+      terms.push(...(ctx.memory?.characters ?? []), ...(ctx.memory?.items ?? []));
+      terms.push(...themeSttWords(themeFor(episodeId, themeId)));
+    }
+  } catch {
+    /* 맥락을 못 읽어도 보기만으로 진행 */
+  }
+  terms.push("대장님", "무전기", "탐험대");
+  const clean = terms
+    .map((t) => t.replace(/\(.*?\)/g, "").replace(/[.?!,]/g, "").trim())
+    .filter((t) => t && t.length <= maxLen && t.split(/\s+/).length <= 5);
+  return [...new Set(clean)].slice(0, maxCount);
 }

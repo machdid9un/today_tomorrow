@@ -3,6 +3,7 @@
 import type { StoryMemory } from "@/types";
 import type { ChatMessage } from "./llm";
 import { hasPersonalInfo } from "./safety";
+import { pickFromTheme, themeContext, themeFor } from "./themes";
 
 /** 게스트 1화 첫 멘트 (README §3.A 고정 문구). LLM 없이 즉시 재생. */
 export const OPENING_GUEST = "치익… 여기는 탐험대! 대장님 이름이 뭐예요?";
@@ -61,33 +62,18 @@ export interface StoryPromptInput {
   episodeKey?: string;
   /** 부모 씨앗이 없는 회차: 갈림길 이후 고전 동화 뼈대의 해결 방향 */
   plotResolve?: string;
-}
-
-/** 첫 신호의 단서와 섬. 매번 같은 오프닝("깜빡깜빡 불빛")이 되지 않게 회차마다 다르게 고른다. */
-const SIGNAL_CLUES = [
-  "딸랑딸랑 작은 방울 소리",
-  "보글보글 물방울 소리",
-  "쿵, 쿵 커다란 발소리",
-  "휘이 휘이 휘파람 같은 바람 소리",
-  "별빛이 반짝, 반짝, 반짝 세 번 깜빡이는 신호",
-  "달콤한 꿀 냄새가 실린 신호",
-  "사각사각 나뭇잎 소리",
-  "퐁퐁 떠오르는 비눗방울",
-  "또르르 조약돌 굴러가는 소리",
-  "콧노래처럼 흥얼흥얼 들리는 노랫소리",
-];
-const ISLANDS = ["구름 섬", "얼음 사탕 섬", "버섯 숲 섬", "조개껍데기 섬", "달빛 호수 섬", "솜사탕 바닷가", "별똥별 언덕", "작은 화산 섬"];
-
-function pickByKey<T>(list: T[], key: string | undefined, salt: number): T {
-  let h = salt;
-  for (const ch of key ?? String(Math.random())) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
-  return list[h % list.length];
+  /** 섬 테마를 직접 정할 때(없으면 episodeKey로 고정 선택) */
+  themeId?: string | null;
 }
 
 function signalHint(p: StoryPromptInput): string {
-  const clue = pickByKey(SIGNAL_CLUES, p.episodeKey, 7);
-  const island = pickByKey(ISLANDS, p.episodeKey, 13);
-  return `이번 섬은 '${island}', 신호의 단서는 '${clue}'다(그대로 베끼지 말고 자연스럽게 녹인다).`;
+  const theme = themeFor(p.episodeKey, p.themeId);
+  const island = pickFromTheme(theme.islands, p.episodeKey, 13);
+  const clue = pickFromTheme(theme.clues, p.episodeKey, 7);
+  const a = pickFromTheme(theme.characters, p.episodeKey, 17);
+  const rest = theme.characters.filter((c) => c !== a);
+  const b = pickFromTheme(rest, p.episodeKey, 19);
+  return `이번 섬은 '${island}', 신호의 단서는 '${clue}', 첫 질문의 후보는 '${a}'와 '${b}'다(그대로 베끼지 말고 자연스럽게 녹인다. 후보가 단서와 어울리지 않으면 테마 친구 중 어울리는 것으로 바꿔도 된다).`;
 }
 
 const DONT_KNOW = /(몰라|모르겠|모르겟|글쎄|몰루|모름)/;
@@ -139,7 +125,7 @@ export function questionPlan(p: StoryPromptInput): string {
 
   if (p.askName) {
     parts.push(
-      `${signalHint(p)} 누군가 그 단서로 도움을 청하는 신호를 보낸다고 한 문장으로 들려준 뒤, 누가 보냈을지 짧은 한 문장으로 묻는다: '○○일까요, 아니면 △△일까요?' (○○·△△는 단서에 어울리는 귀여운 후보, 각각 2~3단어. 다른 대답도 반긴다). choices도 그 두 후보로 한다.`
+      `${signalHint(p)} 누군가 그 단서로 도움을 청하는 신호를 보낸다고 한 문장으로 들려준 뒤, 누가 보냈을지 짧은 한 문장으로 묻는다: '○○일까요, 아니면 △△일까요?' (○○·△△는 위의 두 후보. 다른 대답도 반긴다). choices도 그 두 후보로 한다.`
     );
   } else if (p.turnIndex === 0) {
     parts.push(
@@ -244,7 +230,7 @@ export function buildStoryMessages(p: StoryPromptInput): ChatMessage[] {
 
   const messages: ChatMessage[] = [
     { role: "system", content: STORY_SYSTEM_PROMPT },
-    { role: "system", content: profile + memoryBlock(p.memory) },
+    { role: "system", content: `${profile}${memoryBlock(p.memory)}\n\n${themeContext(themeFor(p.episodeKey, p.themeId))}` },
   ];
 
   for (const t of p.history.slice(-10)) {

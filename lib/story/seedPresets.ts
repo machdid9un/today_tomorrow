@@ -19,6 +19,29 @@ export const SEED_PRESET_SCENE_DIRECTIVES: Record<
     "지금 함께 있는 친구와 처음 가 보는 옆 섬에 막 도착한 장면. 섬 주민이 멀리서 수줍게 쳐다보고 있고, 먼저 어떻게 인사할지(손 흔들기 / 작은 선물 주기) 대장님이 고르게 한다. 실제 이사·전학 이야기는 꺼내지 않는다.",
 };
 
+/** 부모 화면용 문구: 씨앗 이름 + 아이에게는 어떤 장면으로 나오는지 (현실 이야기를 아이에게 직접 묻지 않는다는 안내) */
+export const SEED_PRESET_PARENT_COPY: Record<Exclude<SeedPreset, "custom">, { label: string; scene: string }> = {
+  friend: { label: "친구 사이", scene: "다친 친구 곁에 남을지, 먼저 떠나는 배를 탈지 고르는 장면" },
+  school: { label: "새 학기·단체생활", scene: "섬의 작은 탐험대 학교에 처음 들어가 무엇부터 해 볼지 고르는 장면" },
+  sibling: { label: "동생·나누기", scene: "졸졸 따라오는 아기 동생과 찾은 보물을 나눌지 고르는 장면" },
+  fear: { label: "무서움·용기", scene: "조금 어두운 동굴 앞에서 무엇을 챙기면 든든할지 고르는 장면" },
+  new_place: { label: "새로운 곳", scene: "처음 가 보는 섬의 주민에게 어떻게 인사할지 고르는 장면" },
+};
+
+const SEED_PRESETS_ALL: SeedPreset[] = ["friend", "school", "sibling", "fear", "new_place", "custom"];
+
+/** 저장 API용 입력 검증. 잘못된 값이면 null. 자유 입력은 300자까지. */
+export function parseSeedInput(
+  preset: unknown,
+  text: unknown
+): { preset: SeedPreset | null; text: string | null } | null {
+  if (preset === null || preset === undefined || preset === "") return { preset: null, text: null }; // 씨앗 지우기
+  if (typeof preset !== "string" || !(SEED_PRESETS_ALL as string[]).includes(preset)) return null;
+  if (preset !== "custom") return { preset: preset as SeedPreset, text: null };
+  const t = typeof text === "string" ? text.trim().slice(0, 300) : "";
+  return t ? { preset: "custom", text: t } : null;
+}
+
 const FREE_TEXT_SYSTEM = `부모가 아이와 함께 이야기해 보고 싶은 주제를 적었다. 이것을 아이 잠자리 모험 속 '한 장면 지시문'으로 바꿔라.
 규칙:
 - 1~2문장. 판타지 모험 속 상징적인 장면으로만 표현한다.
