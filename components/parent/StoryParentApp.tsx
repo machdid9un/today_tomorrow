@@ -12,6 +12,7 @@ import { PLANETS } from "@/components/kid/planets";
 import Wordmark from "@/components/kid/Wordmark";
 import { makeNotePdf, type NoteData } from "./notePdf";
 import { saveSeedPreset, type ParentEpisode, type SeedSectionCopy } from "./parentData";
+import PayModal, { PRICE_LABEL, TRIAL_LABEL } from "./PayModal";
 import { useParentData } from "./ParentDataProvider";
 import s from "./storyParent.module.css";
 
@@ -75,6 +76,7 @@ export default function StoryParentApp({ seedCopy, initialTab = "report", initia
   const [shelf, setShelf] = useState<string | null>(null);
   const [seed, setSeed] = useState<SeedPreset | null>(null);
   const [seedState, setSeedState] = useState<"idle" | "saving" | "saved" | "error">("idle");
+  const [payOpen, setPayOpen] = useState(false);
   const [pdfBusy, setPdfBusy] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -572,12 +574,13 @@ export default function StoryParentApp({ seedCopy, initialTab = "report", initia
       {seedCard()}
       <div className={s.plan}>
         <span>
-          <b>월 9,900원</b> · 지금은 무료 체험
+          <b>{PRICE_LABEL}</b> · {TRIAL_LABEL}
         </span>
-        <button type="button" onClick={() => goTab("settings")}>
-          사전 신청
+        <button type="button" onClick={() => setPayOpen(true)}>
+          결제
         </button>
       </div>
+      <PayModal open={payOpen} onClose={() => setPayOpen(false)} />
     </>
   );
 
@@ -926,7 +929,7 @@ function Settings({ say, goKid, childName, ageLabel }: { say: (t: string) => voi
         <div className={s.row} style={{ marginTop: 12 }}>
           요금제
           <span>
-            <b style={{ color: "#1b1f2e" }}>월 9,900원</b> · 지금은 무료 체험
+            <b style={{ color: "#1b1f2e" }}>{PRICE_LABEL}</b> · {TRIAL_LABEL}
           </span>
         </div>
       </section>

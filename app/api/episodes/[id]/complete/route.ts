@@ -52,7 +52,7 @@ export async function POST(
   }
 
   const t0 = Date.now();
-  const { report, summary, errors } = await finalizeEpisode(episodeId, endReason);
+  const { report, summary, errors, seedConsumed } = await finalizeEpisode(episodeId, endReason);
 
   // 턴 기록 저장이 우선이라는 원칙(README §13-6): report/summary가 비어도 회차는 종료 처리한다.
   const episodeUpdate: Record<string, unknown> = {
@@ -78,6 +78,11 @@ export async function POST(
 
   if (summary && episode.world_id) {
     const worldUpdate: Record<string, unknown> = { memory_json: summary.worldMemory };
+    // 부모가 담은 마음(씨앗)을 이번 회차에 썼으면 비운다 — 안 비우면 다음 회차에도 같은 마음이 또 들어간다
+    if (seedConsumed) {
+      worldUpdate.next_seed_preset = null;
+      worldUpdate.next_seed_text = null;
+    }
     if (summary.childName) {
       const { data: world } = await sb
         .from("worlds")
