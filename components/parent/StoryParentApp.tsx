@@ -9,6 +9,7 @@ import type { MoodWeather } from "@/lib/story/reportGenerator";
 import { buildWeeklyReport, familiarName, nameWithSubject, nightOf, WEATHER_LABEL } from "@/lib/story/weeklyReport";
 import type { SeedPreset } from "@/types";
 import { PLANETS } from "@/components/kid/planets";
+import Wordmark from "@/components/kid/Wordmark";
 import { makeNotePdf, type NoteData } from "./notePdf";
 import { saveSeedPreset, type ParentEpisode, type SeedSectionCopy } from "./parentData";
 import { useParentData } from "./ParentDataProvider";
@@ -173,7 +174,7 @@ export default function StoryParentApp({ seedCopy, initialTab = "report", initia
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `상상무전기_관찰노트_${name ?? "아이"}.pdf`;
+      a.download = `쫑긋_관찰노트_${name ?? "아이"}.pdf`;
       document.body.appendChild(a);
       a.click();
       a.remove();
@@ -196,7 +197,7 @@ export default function StoryParentApp({ seedCopy, initialTab = "report", initia
   const header = (
     <header className={s.top}>
       <Link href="/parent" className={s.brand} onClick={() => goTab("report")}>
-        <span>상상</span> 무전기
+        <Wordmark />
       </Link>
       <div className={s.topRight}>
         {kids.length > 1 ? (

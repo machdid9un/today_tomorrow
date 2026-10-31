@@ -4,6 +4,7 @@
 import Link from "next/link";
 import { createContext, useCallback, useContext, useRef, useState } from "react";
 import ParentGate from "./ParentGate";
+import Wordmark from "./Wordmark";
 import styles from "./kid.module.css";
 
 // 별 자리는 고정 공식으로 만들어서 서버·브라우저 그림이 같다
@@ -57,8 +58,8 @@ export default function KidShell({ children, showLogin = false, showParent = tru
         </div>
         <div className={styles.app}>
           <header className={styles.bar}>
-            <Link href="/kid" className={styles.brand} aria-label="상상 무전기 처음으로">
-              <span>상상</span> 무전기<sup aria-hidden="true">✦</sup>
+            <Link href="/kid" className={styles.brand} aria-label="쫑긋 처음으로">
+              <Wordmark /><sup aria-hidden="true">✦</sup>
             </Link>
             <div className={styles.barRight}>
               {showLogin && (

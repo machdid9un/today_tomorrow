@@ -5,7 +5,7 @@ import ParentDataProvider from "@/components/parent/ParentDataProvider";
 import { THEMES } from "@/lib/story/themes";
 
 export const metadata: Metadata = {
-  title: "교신 리포트 · 상상 무전기",
+  title: "교신 리포트 · 쫑긋",
   description: "아이가 이야기 속에서 한 말과 고른 것을 근거로 정리한 보호자용 리포트",
 };
 

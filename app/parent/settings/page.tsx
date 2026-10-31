@@ -3,7 +3,7 @@ import type { Metadata } from "next";
 import StoryParentApp from "@/components/parent/StoryParentApp";
 import { getSeedCopy } from "@/components/parent/seedCopy";
 
-export const metadata: Metadata = { title: "설정 · 상상 무전기" };
+export const metadata: Metadata = { title: "설정 · 쫑긋" };
 
 export default function ParentSettingsPage() {
   return <StoryParentApp seedCopy={getSeedCopy()} initialTab="settings" />;

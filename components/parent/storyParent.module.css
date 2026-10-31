@@ -14,8 +14,10 @@
 .root :where(a) { color: inherit; text-decoration: none; }
 
 .top { display: flex; align-items: center; justify-content: space-between; gap: 12px; height: 76px; }
-.brand { font-family: var(--font-display); font-size: 24px; color: var(--p-purple); letter-spacing: -1px; }
-.brand span { color: var(--p-coral); }
+.brand { font-family: var(--font-display); font-size: 32px; color: var(--p-purple); letter-spacing: 0; } /* 쫑긋: 쫑 = 용 코랄, 긋 = 용 보라 */
+/* 쫑긋 로고 (Wordmark): 용 코랄 + 용 보라, 귀도 용 보라 */
+.brand { display: inline-flex; --wm-jjong: var(--yong-coral); --wm-geut: var(--p-purple); --wm-ear: #b9a8ec; --wm-ear-in: #d3c8f5; }
+
 .topRight { display: flex; align-items: center; gap: 8px; }
 .child { display: inline-flex; align-items: center; gap: 6px; min-height: 40px; padding: 0 14px; border: 1.5px solid #e3d9f3; border-radius: 999px; background: #fff; font-size: 13px; font-weight: 600; }
 .kidmode { display: inline-flex; align-items: center; gap: 6px; min-height: 40px; padding: 0 14px; border-radius: 999px; background: var(--p-navy) !important; color: #fff8ee !important; font-size: 13px; font-weight: 600; }
@@ -194,7 +196,7 @@ button.ev:hover { background: #e7e1f8 !important; }
   .note .btn { margin-top: 0; width: auto; padding: 0 22px; }
 }
 @media (max-width: 420px) {
-  .brand { font-size: 21px; }
+  .brand { font-size: 28px; }
   .child, .kidmode { min-height: 36px; padding: 0 10px; font-size: 12px; }
 }
 @media (max-width: 380px) {
