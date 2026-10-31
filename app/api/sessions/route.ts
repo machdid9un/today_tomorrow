@@ -1,5 +1,7 @@
 // POST /api/sessions — 게스트/회원 모험 생성 → worldId, episodeId. 소유: 역할 1.
-// 지금은 게스트 전용 구현 (매직링크 로그인은 P1, 붙기 전까지 owner_user_id는 항상 null).
+// 요청 바디(선택): { worldId }. 로그인/회원가입(POST /api/auth/login|signup)으로 이미 알고 있는
+// 계정 세계가 있으면 클라이언트가 그 worldId를 실어 보낸다 — 게스트 쿠키와 무관하게 그 세계를
+// 그대로 이어간다(§9-계정). worldId를 안 보내면 아래 게스트 쿠키 규칙을 그대로 따른다.
 // README §9 접근 제어: 게스트 토큰은 HttpOnly 쿠키로만 들고 있고, DB엔 해시만 저장한다.
 //
 // 이어하기 규칙(README §3.A "같은 기기에서 다음 날 앱을 열면 게스트 쿠키로 2화가 1화를 이어갑니다"):
@@ -20,6 +22,60 @@ const GUEST_TTL_MS = 48 * 60 * 60 * 1000; // 48시간. 장기 보관을 보장�
 
 function sha256(value: string): string {
   return createHash("sha256").update(value).digest("hex");
+}
+
+/** 이 세계의 최신 회차를 이어간다(활성이면 그대로, 끝났으면 다음 회차를 만듦). 세계 자체가 없으면 null. */
+async function continueWorldById(
+  sb: ReturnType<typeof getSupabaseServerClient>,
+  worldId: string
+): Promise<{ worldId: string; episodeId: string } | null> {
+  const { data: latest } = await sb
+    .from("episodes")
+    .select("id, episode_number, status")
+    .eq("world_id", worldId)
+    .order("episode_number", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (!latest) {
+    // 세계는 있는데 회차가 하나도 없음(예: 막 가입해서 아직 한 번도 안 놀아본 계정) → 1화를 만든다.
+    const { data: first, error: firstErr } = await sb
+      .from("episodes")
+      .insert({ world_id: worldId, episode_number: 1, status: "active" })
+      .select("id")
+      .single();
+    if (firstErr || !first) {
+      console.error("[sessions] first episode insert failed", firstErr);
+      return null;
+    }
+    return { worldId, episodeId: first.id };
+  }
+
+  if (latest.status !== "completed") {
+    // 아직 끝나지 않은 회차(예: 새로고침) → 그 회차를 그대로 이어간다.
+    return { worldId, episodeId: latest.id };
+  }
+
+  // 지난 회차가 끝났으면 다음 회차를 만든다 (/api/episodes/[id]/next와 같은 규칙, 멱등).
+  const nextNumber = latest.episode_number + 1;
+  const { data: existingNext } = await sb
+    .from("episodes")
+    .select("id")
+    .eq("world_id", worldId)
+    .eq("episode_number", nextNumber)
+    .maybeSingle();
+  if (existingNext) return { worldId, episodeId: existingNext.id };
+
+  const { data: next, error: nextErr } = await sb
+    .from("episodes")
+    .insert({ world_id: worldId, episode_number: nextNumber, status: "active" })
+    .select("id")
+    .single();
+  if (nextErr || !next) {
+    console.error("[sessions] next episode insert failed", nextErr);
+    return null;
+  }
+  return { worldId, episodeId: next.id };
 }
 
 /** 유효한 기존 게스트 세계를 찾아 이어서 쓴다. 없거나 만료됐으면 null. */
@@ -44,45 +100,21 @@ async function continueExistingWorld(
     .update({ guest_expires_at: new Date(Date.now() + GUEST_TTL_MS).toISOString() })
     .eq("id", world.id);
 
-  const { data: latest } = await sb
-    .from("episodes")
-    .select("id, episode_number, status")
-    .eq("world_id", world.id)
-    .order("episode_number", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-
-  if (!latest) return null; // 세계는 있는데 회차가 하나도 없는 비정상 상태 → 새로 만든다
-
-  if (latest.status !== "completed") {
-    // 아직 끝나지 않은 회차(예: 새로고침) → 그 회차를 그대로 이어간다.
-    return { worldId: world.id, episodeId: latest.id };
-  }
-
-  // 지난 회차가 끝났으면 다음 회차를 만든다 (/api/episodes/[id]/next와 같은 규칙, 멱등).
-  const nextNumber = latest.episode_number + 1;
-  const { data: existingNext } = await sb
-    .from("episodes")
-    .select("id")
-    .eq("world_id", world.id)
-    .eq("episode_number", nextNumber)
-    .maybeSingle();
-  if (existingNext) return { worldId: world.id, episodeId: existingNext.id };
-
-  const { data: next, error: nextErr } = await sb
-    .from("episodes")
-    .insert({ world_id: world.id, episode_number: nextNumber, status: "active" })
-    .select("id")
-    .single();
-  if (nextErr || !next) {
-    console.error("[sessions] next episode insert failed", nextErr);
-    return null;
-  }
-  return { worldId: world.id, episodeId: next.id };
+  return continueWorldById(sb, world.id);
 }
 
 export async function POST(request: NextRequest) {
   const sb = getSupabaseServerClient();
+
+  // 로그인한 계정: 클라이언트가 로그인/가입 때 받아 저장해 둔 worldId를 그대로 보내면
+  // 그 세계를 이어간다(게스트 쿠키와 무관 — 계정 세계는 쿠키로 찾지 않는다). README §9-계정.
+  const body = (await request.json().catch(() => null)) as { worldId?: unknown } | null;
+  const requestedWorldId = typeof body?.worldId === "string" && body.worldId.trim() ? body.worldId.trim() : null;
+  if (requestedWorldId) {
+    const continued = await continueWorldById(sb, requestedWorldId);
+    if (continued) return NextResponse.json({ ...continued, continued: true });
+    return NextResponse.json({ error: "세계를 찾지 못했습니다." }, { status: 404 });
+  }
 
   const existingToken = request.cookies.get(GUEST_COOKIE_NAME)?.value;
   if (existingToken) {
