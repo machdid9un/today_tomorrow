@@ -10,8 +10,11 @@ import { resolveSeedDirective } from "./seedPresets";
 
 export { isSafetyConcern };
 
-const SOFT_LIMIT_SEC = 5 * 60; // 이후 AI가 자연스러운 마무리 제안 가능
-const HARD_LIMIT_SEC = 10 * 60; // 하드 타임아웃
+const HARD_LIMIT_SEC = 10 * 60; // 하드 타임아웃 (실제 경과 시간 기준 안전장치, 분량과는 별개)
+// 분량(대장님과 주고받는 횟수) 기준: 7턴 미만이면 너무 빨리 끝나지 않게 마무리를 제안하지 않고,
+// 15턴이 되면 길어도 그때는 반드시 마무리한다.
+const MIN_TURNS_FOR_NATURAL_END = 7;
+const MAX_TURNS = 15;
 const SEED_TURN = 3; // 씨앗 장면 턴 (일반)
 const SHORT_SEED_TURN = 2; // 씨앗 장면 턴 (?short=1)
 const SHORT_LAST_TURN = 3; // ?short=1이면 이 턴에서 마무리
@@ -122,6 +125,7 @@ function decideMode(input: GenerateTurnInput, hasSeed: boolean): TurnMode {
   if (turnIndex > 0 && isSafetyConcern(childText)) return "safety"; // 잘래보다 먼저: 위험 신호는 꼭 받아 준다
   if (turnIndex > 0 && isSleepRequest(childText)) return "ending_sleep";
   if (forceEnd || elapsedSeconds >= HARD_LIMIT_SEC) return "ending_timeout";
+  if (!short && turnIndex >= MAX_TURNS) return "ending_natural"; // 분량 상한: 15턴이면 무조건 마무리
   if (short && turnIndex >= SHORT_LAST_TURN) return "ending_natural";
   if (hasSeed && turnIndex === (short ? SHORT_SEED_TURN : SEED_TURN)) return "seed";
   return "normal";
@@ -153,7 +157,7 @@ function mockTurn(mode: TurnMode, turnIndex: number): RawTurn {
 }
 
 export async function generateTurn(input: GenerateTurnInput): Promise<GeneratedTurn> {
-  const { ctx, childText, turnIndex, elapsedSeconds } = input;
+  const { ctx, childText, turnIndex } = input;
   const askName = turnIndex === 1 && !ctx.childName && ctx.episodeNumber <= 1;
 
   // 1) 게스트 1화 첫 멘트: 고정 문구, LLM 호출 없이 즉시
@@ -165,7 +169,8 @@ export async function generateTurn(input: GenerateTurnInput): Promise<GeneratedT
   let mode = decideMode(input, Boolean(ctx.seedPreset));
   const seedDirective = mode === "seed" ? await resolveSeedDirective(ctx.seedPreset, ctx.seedText) : null;
   if (mode === "seed" && !seedDirective) mode = "normal";
-  const canSuggestEnd = !input.short && mode === "normal" && elapsedSeconds >= SOFT_LIMIT_SEC;
+  const canSuggestEnd =
+    !input.short && mode === "normal" && turnIndex >= MIN_TURNS_FOR_NATURAL_END;
 
   // 3) LLM 호출 (키 없으면 mock). JSON이 깨져도 살릴 수 있는 부분은 살린다.
   let raw: RawTurn;
