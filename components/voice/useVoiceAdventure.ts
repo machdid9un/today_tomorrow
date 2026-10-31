@@ -98,6 +98,11 @@ export function useVoiceAdventure({ episodeId, mode }: UseVoiceAdventureOptions)
     if (mode === "handsfree" && streamRef.current) {
       vadRef.current?.stop();
       vadRef.current = startEnergyVAD(streamRef.current, {
+        onCalibrated: (effectiveThreshold, noiseFloor) => {
+          console.info(
+            `[voice] VAD 보정 완료 — 주변 소음 평균 ${noiseFloor.toFixed(4)}, 실제 임계값 ${effectiveThreshold.toFixed(4)}`
+          );
+        },
         onSpeechStart: () => {
           clearSilenceTimer();
           startRecording();

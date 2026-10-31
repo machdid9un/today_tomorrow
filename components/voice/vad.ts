@@ -4,12 +4,22 @@
 // 22:00 피벗 게이트에서 이 VAD가 불안정하면 VOICE_MODE=ptt로 즉시 전환하세요(코드 수정 아님).
 
 export interface EnergyVADOptions {
-  /** 이 값보다 크면 "말하는 중"으로 판단 (0~1, 마이크/환경에 따라 튜닝 필요) */
+  /** 바닥값(최소 보장 임계값). 실제 임계값은 아래 보정 단계에서 이 값보다 높게 잡힐 수도 있음. */
   speechThreshold?: number;
   /** 말하는 중이라고 판단하려면 이 시간(ms) 이상 임계값을 넘어야 함 (오탐 방지) */
   speechMinDurationMs?: number;
   /** 말이 끝났다고 판단하기 전 침묵이 유지되어야 하는 시간(ms) = 발화 종료 판정 지연 */
   silenceHangoverMs?: number;
+  /**
+   * 시작 직후 이 시간(ms) 동안은 발화로 판정하지 않고 주변 소음(TV, 옆 대화 등)의
+   * 평균 크기만 측정한다. 실제 임계값 = max(speechThreshold, 소음 평균 * noiseMultiplier).
+   * 조용한 방이면 speechThreshold 그대로, 시끄러운 방이면 자동으로 민감도를 낮춘다.
+   */
+  calibrationMs?: number;
+  /** 소음 평균 대비 몇 배 커야 "말하는 중"으로 볼지 (클수록 둔감해짐, 오탐 줄어듦) */
+  noiseMultiplier?: number;
+  /** 보정이 끝나 실제 임계값이 정해지면 호출 (디버깅/로그용) */
+  onCalibrated?: (effectiveThreshold: number, noiseFloor: number) => void;
   onSpeechStart?: () => void;
   onSpeechEnd?: () => void;
 }
@@ -28,8 +38,11 @@ export function startEnergyVAD(
 ): EnergyVAD {
   const {
     speechThreshold = 0.08,
-    speechMinDurationMs = 200,
+    speechMinDurationMs = 300,
     silenceHangoverMs = 900,
+    calibrationMs = 600,
+    noiseMultiplier = 3,
+    onCalibrated,
     onSpeechStart,
     onSpeechEnd,
   } = options;
@@ -51,6 +64,13 @@ export function startEnergyVAD(
   let rafId: number;
   let stopped = false;
 
+  // 보정 단계: 시작 직후 calibrationMs 동안 주변 소음 평균을 구해서 실제 임계값을 정한다.
+  const startedAt = performance.now();
+  let calibrating = true;
+  let noiseSampleSum = 0;
+  let noiseSampleCount = 0;
+  let effectiveThreshold = speechThreshold;
+
   const tick = () => {
     if (stopped) return;
     analyser.getFloatTimeDomainData(buffer);
@@ -62,7 +82,20 @@ export function startEnergyVAD(
     const rms = Math.sqrt(sumSquares / buffer.length);
     const now = performance.now();
 
-    if (rms >= speechThreshold) {
+    if (calibrating) {
+      noiseSampleSum += rms;
+      noiseSampleCount += 1;
+      if (now - startedAt >= calibrationMs) {
+        calibrating = false;
+        const noiseFloor = noiseSampleCount > 0 ? noiseSampleSum / noiseSampleCount : 0;
+        effectiveThreshold = Math.max(speechThreshold, noiseFloor * noiseMultiplier);
+        onCalibrated?.(effectiveThreshold, noiseFloor);
+      }
+      rafId = requestAnimationFrame(tick);
+      return;
+    }
+
+    if (rms >= effectiveThreshold) {
       belowThresholdSinceMs = null;
       if (aboveThresholdSinceMs === null) aboveThresholdSinceMs = now;
       if (!isSpeaking && now - aboveThresholdSinceMs >= speechMinDurationMs) {
