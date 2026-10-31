@@ -1,8 +1,8 @@
 // POST /api/episodes/[id]/complete — 회차 종료, 역할 3 생성기 호출 → 리포트·기억·동화책 저장. 소유: 역할 1.
 // 요청: { endReason? }  natural | sleep_request | silence | timeout | manual
 // mock episodeId는 DB가 없으니 /api/story/finish(역할 3, 테스트 전용)를 쓴다.
-// TODO(역할 1): 게스트 쿠키/로그인 세션으로 episodeId 소유권 검사.
-import { NextResponse } from "next/server";
+import { NextResponse, type NextRequest } from "next/server";
+import { canAccessWorld } from "@/lib/auth/worldAccess";
 import { getSupabaseServerClient } from "@/lib/db/supabaseServer";
 import { finalizeEpisode } from "@/lib/story/finalizeEpisode";
 import type { EndReason } from "@/types";
@@ -14,7 +14,7 @@ export const maxDuration = 60;
 const END_REASONS: EndReason[] = ["natural", "sleep_request", "silence", "timeout", "manual"];
 
 export async function POST(
-  request: Request,
+  request: NextRequest,
   context: { params: Promise<{ id: string }> }
 ) {
   const { id: episodeId } = await context.params;
@@ -43,6 +43,9 @@ export async function POST(
     .single();
 
   if (episodeErr || !episode) {
+    return NextResponse.json({ error: "회차를 찾을 수 없습니다." }, { status: 404 });
+  }
+  if (!episode.world_id || !(await canAccessWorld(sb, request, episode.world_id))) {
     return NextResponse.json({ error: "회차를 찾을 수 없습니다." }, { status: 404 });
   }
 

@@ -7,6 +7,7 @@
 // 차이는 README §9-계정, app/api/auth/signup/route.ts 상단 메모 참고.
 import { NextResponse, type NextRequest } from "next/server";
 import { getSupabaseServerClient } from "@/lib/db/supabaseServer";
+import { setAccessTokenCookie } from "@/lib/auth/worldAccess";
 
 export const runtime = "nodejs";
 
@@ -44,5 +45,9 @@ export async function POST(request: NextRequest) {
 
   const res = NextResponse.json({ ok: true, worldId: world?.id ?? null });
   res.cookies.delete(GUEST_COOKIE_NAME); // 이 기기의 게스트 메모리는 계정 데이터로 교체(연결 안 하고 버려둠)
+  // 이후 요청마다 "이 유저가 로그인한 유저가 맞는지" 증명할 세션 쿠키(lib/auth/worldAccess 참고).
+  if (data.session?.access_token) {
+    setAccessTokenCookie(res, data.session.access_token, data.session.expires_in ?? 3600);
+  }
   return res;
 }

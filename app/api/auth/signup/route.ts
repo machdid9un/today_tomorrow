@@ -14,6 +14,7 @@
 import { createHash } from "crypto";
 import { NextResponse, type NextRequest } from "next/server";
 import { getSupabaseServerClient } from "@/lib/db/supabaseServer";
+import { setAccessTokenCookie } from "@/lib/auth/worldAccess";
 
 export const runtime = "nodejs";
 
@@ -90,5 +91,20 @@ export async function POST(request: NextRequest) {
 
   const res = NextResponse.json({ ok: true, worldId });
   res.cookies.delete(GUEST_COOKIE_NAME); // 계정으로 넘어갔으니 더 이상 의미 없는 쿠키
+
+  // 이 세계가 내 계정 것임을 이후 요청마다 증명할 세션 쿠키를 심는다(lib/auth/worldAccess 참고).
+  // admin.createUser는 계정만 만들고 로그인 세션은 안 주므로, 방금 만든 비밀번호로 한 번 더 로그인해서
+  // 토큰을 받는다 — sb(service_role 인스턴스)가 아니라 새 인스턴스로 호출해 sb를 오염시키지 않는다.
+  try {
+    const authClient = getSupabaseServerClient();
+    const { data: signedIn } = await authClient.auth.signInWithPassword({ email, password });
+    if (signedIn?.session?.access_token) {
+      setAccessTokenCookie(res, signedIn.session.access_token, signedIn.session.expires_in ?? 3600);
+    }
+  } catch (err) {
+    console.error("[auth/signup] post-signup sign-in failed", err);
+    // 세션 쿠키를 못 심어도 가입 자체는 성공이다 — 다음에 로그인하면 된다.
+  }
+
   return res;
 }

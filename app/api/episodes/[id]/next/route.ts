@@ -3,15 +3,15 @@
 // 기억 자체(worldMemory)는 이미 /complete 때 worlds.memory_json에 저장돼 있고,
 // /api/story/turn이 loadEpisodeContext(world_id)로 그 기억을 그대로 읽어오므로
 // 여기서는 "다음 회차 행 생성"만 하면 된다 (기억을 복사하는 별도 로직 불필요).
-// TODO(역할 1): 게스트 쿠키/로그인 세션으로 world 소유권 검사.
-import { NextResponse } from "next/server";
+import { NextResponse, type NextRequest } from "next/server";
+import { canAccessWorld } from "@/lib/auth/worldAccess";
 import { getSupabaseServerClient } from "@/lib/db/supabaseServer";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function POST(
-  _request: Request,
+  request: NextRequest,
   context: { params: Promise<{ id: string }> }
 ) {
   const { id: episodeId } = await context.params;
@@ -34,6 +34,9 @@ export async function POST(
     .single();
 
   if (currentErr || !current) {
+    return NextResponse.json({ error: "회차를 찾을 수 없습니다." }, { status: 404 });
+  }
+  if (!current.world_id || !(await canAccessWorld(sb, request, current.world_id))) {
     return NextResponse.json({ error: "회차를 찾을 수 없습니다." }, { status: 404 });
   }
   if (current.status !== "completed") {

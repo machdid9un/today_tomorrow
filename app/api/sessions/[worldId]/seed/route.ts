@@ -1,8 +1,8 @@
 // PATCH /api/sessions/[worldId]/seed — 부모가 고른 '내일 이야기에 마음 담기' 저장. 소유: 역할 1.
 // body: { preset: "courage" | "praise" | "company" | "rest" | "custom" | null, text?: string }
 // worlds.next_seed_preset / next_seed_text 에 저장되고, 다음 회차의 contextStore가 읽어 간다.
-// TODO(역할 1): 게스트 쿠키/로그인 세션으로 worldId 소유권 검사.
-import { NextResponse } from "next/server";
+import { NextResponse, type NextRequest } from "next/server";
+import { canAccessWorld } from "@/lib/auth/worldAccess";
 import { getSupabaseServerClient } from "@/lib/db/supabaseServer";
 import type { SeedPreset } from "@/types";
 
@@ -11,9 +11,13 @@ export const runtime = "nodejs";
 const PRESETS: SeedPreset[] = ["courage", "praise", "company", "rest", "custom"];
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-export async function PATCH(request: Request, context: { params: Promise<{ worldId: string }> }) {
+export async function PATCH(request: NextRequest, context: { params: Promise<{ worldId: string }> }) {
   const { worldId } = await context.params;
   if (!worldId || !UUID_RE.test(worldId)) {
+    return NextResponse.json({ error: "세계를 찾을 수 없습니다." }, { status: 404 });
+  }
+  const sbForAuth = getSupabaseServerClient();
+  if (!(await canAccessWorld(sbForAuth, request, worldId))) {
     return NextResponse.json({ error: "세계를 찾을 수 없습니다." }, { status: 404 });
   }
   const body = (await request.json().catch(() => null)) as { preset?: unknown; text?: unknown } | null;

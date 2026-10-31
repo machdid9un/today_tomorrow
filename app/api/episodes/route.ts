@@ -2,8 +2,8 @@
 // mode=parent: report_json·storybook_text까지 포함(부모 화면용, components/parent/parentData.ts).
 // mode 생략(기본, 아이 화면 components/kid/world.ts): id·episodeNumber·islandTitle·status만.
 //   아이 화면에는 리포트·동화책 원문을 내려주지 않는다(README §8 "모드별 응답 분리").
-// TODO(역할 1): 게스트 쿠키/로그인 세션으로 worldId 소유권 검사. 지금은 worldId만 알면 누구나 조회 가능.
 import { NextResponse, type NextRequest } from "next/server";
+import { canAccessWorld } from "@/lib/auth/worldAccess";
 import { getSupabaseServerClient } from "@/lib/db/supabaseServer";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -35,6 +35,10 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "세계를 불러오지 못했습니다." }, { status: 500 });
   }
   if (!world) {
+    return NextResponse.json({ error: "세계를 찾을 수 없습니다." }, { status: 404 });
+  }
+  if (!(await canAccessWorld(sb, request, worldId))) {
+    // 존재 여부를 알려 주지 않으려고 "없음"과 같은 응답으로 돌려준다.
     return NextResponse.json({ error: "세계를 찾을 수 없습니다." }, { status: 404 });
   }
 

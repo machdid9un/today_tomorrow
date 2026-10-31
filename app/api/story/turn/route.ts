@@ -5,6 +5,9 @@
 //   turnIndex를 안 보내면 서버가 지금까지 저장된 턴 수로 정한다(첫 호출 = 0 = 첫 인사).
 // 응답 이벤트: sentence(index 순서 = TTS 재생 순서) → turn_complete, 실패 시 error  (README §8)
 // 주의: POST라서 브라우저 EventSource로는 못 받음. fetch + response.body.getReader()로 읽을 것.
+import type { NextRequest } from "next/server";
+import { canAccessEpisode } from "@/lib/auth/worldAccess";
+import { getSupabaseServerClient } from "@/lib/db/supabaseServer";
 import { applyThemeId, loadEpisodeContext, saveTurn } from "@/lib/story/contextStore";
 import { generateTurn, splitSentences } from "@/lib/story/storyEngine";
 import { correctSttText } from "@/lib/story/sttCorrect";
@@ -32,12 +35,19 @@ const SSE_HEADERS = {
   Connection: "keep-alive",
 };
 
-export async function POST(request: Request) {
+export async function POST(request: NextRequest) {
   const body = (await request.json().catch(() => null)) as TurnRequestBody | null;
 
   const episodeId = typeof body?.episodeId === "string" ? body.episodeId.trim() : "";
   if (!episodeId) {
     return Response.json({ error: "episodeId가 필요합니다." }, { status: 400 });
+  }
+  // mock-… 은 DB가 없는 로컬 테스트 전용이라 소유권 검사 대상이 아니다.
+  if (!episodeId.startsWith("mock")) {
+    const authSb = getSupabaseServerClient();
+    if (!(await canAccessEpisode(authSb, request, episodeId))) {
+      return Response.json({ error: "회차를 찾을 수 없습니다." }, { status: 404 });
+    }
   }
   const rawChildText = typeof body?.childText === "string" ? body.childText.trim().slice(0, 500) : "";
   // STT가 소음·침묵에서 지어낸 문장("시청해 주셔서 감사합니다" 등)은 아이 말로 쓰지 않는다
@@ -51,8 +61,6 @@ export async function POST(request: Request) {
   const rawLatency = body?.prevLatencyMs ?? body?.latencyMs;
   const prevLatencyMs =
     typeof rawLatency === "number" && Number.isFinite(rawLatency) ? rawLatency : null;
-
-  // TODO(역할 1 연동): 게스트 쿠키/로그인 세션으로 episodeId 소유권 검사
 
   const encoder = new TextEncoder();
   const stream = new ReadableStream<Uint8Array>({

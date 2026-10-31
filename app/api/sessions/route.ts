@@ -12,6 +12,7 @@
 // 쿠키가 없거나 만료됐으면 기존처럼 새 세계 + 1화를 만든다.
 import { createHash, randomBytes } from "crypto";
 import { NextResponse, type NextRequest } from "next/server";
+import { canAccessWorld } from "@/lib/auth/worldAccess";
 import { getSupabaseServerClient } from "@/lib/db/supabaseServer";
 
 export const runtime = "nodejs";
@@ -120,6 +121,9 @@ export async function POST(request: NextRequest) {
   const body = (await request.json().catch(() => null)) as { worldId?: unknown } | null;
   const requestedWorldId = typeof body?.worldId === "string" && body.worldId.trim() ? body.worldId.trim() : null;
   if (requestedWorldId) {
+    if (!(await canAccessWorld(sb, request, requestedWorldId))) {
+      return NextResponse.json({ error: "세계를 찾지 못했습니다." }, { status: 404 });
+    }
     const continued = await continueWorldById(sb, requestedWorldId);
     if (continued) return NextResponse.json({ ...continued, continued: true });
     return NextResponse.json({ error: "세계를 찾지 못했습니다." }, { status: 404 });

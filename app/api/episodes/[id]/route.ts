@@ -4,6 +4,7 @@
 //   (README §8 "모드별 응답 분리" — 아이 화면 API 응답엔 리포트가 절대 포함되지 않아야 함).
 // TODO(역할 1): mode=parent는 부모 토큰(길게 누르기 관문)이 있을 때만 허용하도록 검증 추가.
 import { NextResponse, type NextRequest } from "next/server";
+import { canAccessWorld } from "@/lib/auth/worldAccess";
 import { getSupabaseServerClient } from "@/lib/db/supabaseServer";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -40,6 +41,9 @@ export async function GET(
     return NextResponse.json({ error: "회차를 불러오지 못했습니다." }, { status: 500 });
   }
   if (!episode) {
+    return NextResponse.json({ error: "회차를 찾을 수 없습니다." }, { status: 404 });
+  }
+  if (!episode.world_id || !(await canAccessWorld(sb, request, episode.world_id))) {
     return NextResponse.json({ error: "회차를 찾을 수 없습니다." }, { status: 404 });
   }
 
