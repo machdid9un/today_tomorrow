@@ -140,7 +140,7 @@ function Stage({ episodeId, mode, themeId, onReset }: AdventureStageProps & { on
               className={styles.dialogInput}
               value={typed}
               onChange={(e) => setTyped(e.target.value)}
-              placeholder={choices.length ? "다른 대답을 적어도 돼요" : "여기에 대답을 적어 줘요 (예: 지우)"}
+              placeholder={choices.length ? "다른 대답 적기" : "대답을 적어 줘요"}
               aria-label="글로 대답하기"
               autoFocus
             />
