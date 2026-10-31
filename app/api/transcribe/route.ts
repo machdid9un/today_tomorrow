@@ -1,17 +1,16 @@
 // POST /api/transcribe — 오디오 → text (STT). 소유: 역할 2.
-// 입력: multipart/form-data, field "audio" (Blob, 브라우저 MediaRecorder 산출물, 보통 audio/webm)
+// 입력: multipart/form-data, field "audio" (Blob, 브라우저 MediaRecorder 산출물, webm/mp4/ogg)
 // 출력: { text: string }
-// 공급자: OpenAI Whisper (whisper-1). .env.local에 OPENAI_API_KEY 필요.
-// 주의: openai SDK는 새 패키지라 설치하지 않고 fetch로 직접 호출합니다(README 협업 규칙).
+// 공급자: ElevenLabs Scribe (scribe_v2). .env.local에 ELEVENLABS_API_KEY 필요.
 import { NextResponse } from "next/server";
 
 export const runtime = "nodejs";
 
 export async function POST(request: Request) {
-  const apiKey = process.env.OPENAI_API_KEY;
+  const apiKey = process.env.ELEVENLABS_API_KEY;
   if (!apiKey) {
     return NextResponse.json(
-      { error: { code: "CONFIG_MISSING", message: "OPENAI_API_KEY가 설정되지 않았습니다." } },
+      { error: { code: "CONFIG_MISSING", message: "ELEVENLABS_API_KEY가 설정되지 않았습니다." } },
       { status: 500 }
     );
   }
@@ -35,16 +34,14 @@ export async function POST(request: Request) {
   }
 
   const upstreamForm = new FormData();
-  // 확장자는 브라우저 MediaRecorder의 mimeType에 맞춰 대략적으로 지정 (webm 기본 가정)
-  upstreamForm.append("file", audio, "utterance.webm");
-  upstreamForm.append("model", "whisper-1");
-  upstreamForm.append("language", "ko");
+  upstreamForm.append("file", audio, "utterance");
+  upstreamForm.append("model_id", "scribe_v2"); // ElevenLabs STT는 model_id 필수
 
   let upstreamRes: Response;
   try {
-    upstreamRes = await fetch("https://api.openai.com/v1/audio/transcriptions", {
+    upstreamRes = await fetch("https://api.elevenlabs.io/v1/speech-to-text", {
       method: "POST",
-      headers: { Authorization: `Bearer ${apiKey}` },
+      headers: { "xi-api-key": apiKey },
       body: upstreamForm,
     });
   } catch {

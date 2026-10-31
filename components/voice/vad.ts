@@ -137,6 +137,7 @@ export function startEnergyVAD(
 
   return {
     stop: () => {
+      if (stopped) return; // 이미 멈춘 인스턴스를 또 멈추면 AudioContext.close()가 예외를 던진다.
       stopped = true;
       cancelAnimationFrame(rafId);
       source.disconnect();

@@ -1,25 +1,29 @@
 // POST /api/tts — text → 오디오 (TTS). 소유: 역할 2.
 // 입력: JSON { text: string }
 // 출력: audio/mpeg 바이너리 스트림
-// 공급자: OpenAI TTS (gpt-4o-mini-tts, voice: nova). .env.local에 OPENAI_API_KEY 필요.
-// gpt-4o-mini-tts는 instructions로 톤을 지정할 수 있어 tts-1보다 한국어 억양이 자연스럽다.
+// 공급자: ElevenLabs TTS (eleven_v3, Audio Tag 지원). .env.local에 ELEVENLABS_API_KEY 필요.
+// 보이스는 OpenAI처럼 이름이 아니라 voice_id(긴 문자열)로 지정한다. ELEVENLABS_VOICE_ID로 바꿀 수 있고,
+// 안 넣으면 ElevenLabs 기본 제공 보이스(Rachel) ID로 폴백한다 — 대시보드 Voice Library에서 원하는 걸로 교체 권장.
 import { NextResponse } from "next/server";
 
-const TTS_INSTRUCTIONS =
-  "아이에게 잠자리 동화를 읽어주듯 따뜻하고 차분하게, 조금 천천히 말해줘.";
+const DEFAULT_VOICE_ID = "21m00Tcm4TlvDq8ikWAM"; // ElevenLabs 기본 제공 보이스(Rachel). 교체 권장.
+// eleven_v3의 Audio Tag: voice_settings 숫자값보다 훨씬 확실하게 감정/캐릭터를 바꿔준다.
+// "신나는 어린 용" 톤 요청에 맞춰 [excited]를 문장 앞에 붙인다.
+const AUDIO_TAG = "[excited]";
 
 export const runtime = "nodejs";
 
 const MAX_TEXT_LENGTH = 600; // 턴당 출력 예산(README §5) 보호용 상한
 
 export async function POST(request: Request) {
-  const apiKey = process.env.OPENAI_API_KEY;
+  const apiKey = process.env.ELEVENLABS_API_KEY;
   if (!apiKey) {
     return NextResponse.json(
-      { error: { code: "CONFIG_MISSING", message: "OPENAI_API_KEY가 설정되지 않았습니다." } },
+      { error: { code: "CONFIG_MISSING", message: "ELEVENLABS_API_KEY가 설정되지 않았습니다." } },
       { status: 500 }
     );
   }
+  const voiceId = process.env.ELEVENLABS_VOICE_ID || DEFAULT_VOICE_ID;
 
   let body: { text?: string };
   try {
@@ -47,20 +51,28 @@ export async function POST(request: Request) {
 
   let upstreamRes: Response;
   try {
-    upstreamRes = await fetch("https://api.openai.com/v1/audio/speech", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "gpt-4o-mini-tts",
-        voice: "nova",
-        input: text,
-        instructions: TTS_INSTRUCTIONS,
-        response_format: "mp3",
-      }),
-    });
+    upstreamRes = await fetch(
+      `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}?output_format=mp3_44100_128`,
+      {
+        method: "POST",
+        headers: {
+          "xi-api-key": apiKey,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          text: `${AUDIO_TAG} ${text}`,
+          model_id: "eleven_v3",
+          // Audio Tag가 감정의 핵심을 담당하고, 숫자값은 보조적으로 변화폭·속도만 살짝 더 준다.
+          voice_settings: {
+            stability: 0.3,
+            similarity_boost: 0.8,
+            style: 0.65,
+            speed: 1.08,
+            use_speaker_boost: true,
+          },
+        }),
+      }
+    );
   } catch {
     return NextResponse.json(
       { error: { code: "UPSTREAM_UNREACHABLE", message: "TTS 서버에 연결할 수 없습니다." } },

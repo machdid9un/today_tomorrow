@@ -43,8 +43,17 @@ export function useVoiceAdventure({ episodeId, mode }: UseVoiceAdventureOptions)
   const turnIndexRef = useRef(0);
   const prevLatencyMsRef = useRef<number | null>(null);
   const recordingMimeTypeRef = useRef<string>("audio/webm");
+  // phase는 React state라 콜백 안에서 참조하면 클로저가 오래된 값을 볼 수 있다.
+  // VAD 콜백처럼 "지금 진짜 리스닝 중인가"를 즉시 판단해야 하는 곳에 쓴다.
+  const phaseRef = useRef<SessionPhase>("idle");
+  // 턴이 겹쳐 돌아가는 것(오디오 중복 재생)을 막는 2차 안전장치.
+  const turnInFlightRef = useRef(false);
 
   const config = DEFAULT_VOICE_SESSION_CONFIG;
+
+  useEffect(() => {
+    phaseRef.current = phase;
+  }, [phase]);
 
   const clearSilenceTimer = useCallback(() => {
     if (silenceTimerRef.current) {
@@ -104,10 +113,18 @@ export function useVoiceAdventure({ episodeId, mode }: UseVoiceAdventureOptions)
           );
         },
         onSpeechStart: () => {
+          // phase가 바뀐 뒤에도(예: 이미 recording으로 넘어간 뒤) 뒤늦게 날아온 콜백은 무시.
+          if (phaseRef.current !== "listening") return;
           clearSilenceTimer();
           startRecording();
         },
         onSpeechEnd: () => {
+          // 핵심 버그 수정: 말이 끝나는 "그 순간" VAD를 완전히 멈춘다.
+          // 안 그러면 STT→엔진→TTS 처리 중에도 VAD가 계속 마이크를 감시하다가,
+          // 스피커로 나가는 AI 목소리가 마이크로 다시 들어오는 걸(에코) "아이가 또 말했다"고
+          // 오인식해서 새 턴을 또 시작시키고, 그 결과 두 턴의 TTS가 동시에 겹쳐 재생된다.
+          vadRef.current?.stop();
+          vadRef.current = null;
           stopRecording();
         },
       });
@@ -223,6 +240,14 @@ export function useVoiceAdventure({ episodeId, mode }: UseVoiceAdventureOptions)
 
   const runTurn = useCallback(
     async (childText: string) => {
+      // 2차 안전장치: 어떤 경로로든 이미 턴이 진행 중이면 새 턴을 시작하지 않는다
+      // (오디오 중복 재생 방지). 정상 흐름에서는 걸릴 일이 없어야 하고, 걸리면 버그 신호다.
+      if (turnInFlightRef.current) {
+        console.warn("[voice] 이미 턴이 진행 중이라 중복 호출을 막았습니다:", childText);
+        return;
+      }
+      turnInFlightRef.current = true;
+
       setPhase("thinking");
       clearSilenceTimer();
 
@@ -249,6 +274,7 @@ export function useVoiceAdventure({ episodeId, mode }: UseVoiceAdventureOptions)
       } catch {
         setErrorMessage("잠깐 쉬었다가 다시 이야기해 보자.");
         setPhase("error");
+        turnInFlightRef.current = false;
         scheduleErrorRecovery();
         return;
       }
@@ -256,6 +282,7 @@ export function useVoiceAdventure({ episodeId, mode }: UseVoiceAdventureOptions)
       if (!res.ok || !res.body) {
         setErrorMessage("잠깐 쉬었다가 다시 이야기해 보자.");
         setPhase("error");
+        turnInFlightRef.current = false;
         scheduleErrorRecovery();
         return;
       }
@@ -303,6 +330,7 @@ export function useVoiceAdventure({ episodeId, mode }: UseVoiceAdventureOptions)
             setErrorMessage(payload?.message ?? "잠깐 쉬었다가 다시 이야기해 보자.");
             setPhase("error");
             queue.cancel();
+            turnInFlightRef.current = false;
             scheduleErrorRecovery();
             return;
           }
@@ -311,6 +339,7 @@ export function useVoiceAdventure({ episodeId, mode }: UseVoiceAdventureOptions)
         setErrorMessage("잠깐 쉬었다가 다시 이야기해 보자.");
         setPhase("error");
         queue.cancel();
+        turnInFlightRef.current = false;
         scheduleErrorRecovery();
         return;
       }
@@ -327,6 +356,7 @@ export function useVoiceAdventure({ episodeId, mode }: UseVoiceAdventureOptions)
 
   const finishTurn = useCallback(
     async (turnComplete: TurnCompletePayload | null, _sentences: TurnSentence[]) => {
+      turnInFlightRef.current = false;
       if (endedRef.current) return;
 
       // 종료 여부는 서버(역할 3 storyEngine.decideMode)가 하드 타임아웃·취침 발화·자연 종료를
