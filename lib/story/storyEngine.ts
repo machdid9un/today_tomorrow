@@ -5,7 +5,7 @@ import type { EpisodeContext } from "./contextStore";
 import { chatJSON, hasLlmKey, LlmJsonError, STORY_MODEL } from "./llm";
 import { detectChildName } from "./memorySummarizer";
 import { toYongStyle, withTopic } from "./persona";
-import { buildStoryMessages, CLOSING_LINE, OPENING_GUEST, type TurnMode } from "./prompts";
+import { buildStoryMessages, CLOSING_LINE, OPENING_GUEST, WIND_DOWN_TURN, type TurnMode } from "./prompts";
 import { isSafetyConcern } from "./safety";
 import { plotPatternFor } from "./plotPatterns";
 import { resolveSeedDirective, seedSceneHint } from "./seedPresets";
@@ -218,8 +218,12 @@ export async function generateTurn(input: GenerateTurnInput): Promise<GeneratedT
           // 주의: 턴마다 매번 같은 resolve 문구를 다시 주면, 모델이 "아직 안 풀렸다"로 오해하고
           // 이미 끝난 장면(예: "징검돌이 놓였다")을 매 턴 또 narration으로 반복해 이야기가 헛돈다.
           // 한 번만 주고, 그 뒤는 대화 기록 + questionPlan(afterSeed/WIND_DOWN 등)이 자연스럽게 이어가게 한다.
+          // (갱신) 갈림길 다음 턴은 '첫 시도의 뜻밖의 결과(arcTwist)' 차례라, 해결 방향은 해결하는 턴에 한 번만 준다:
+          // 일반 회차 8턴(WIND_DOWN_TURN) 또는 마무리 턴(자연·시간 종료). 리드 수정 취지(매 턴 반복 주입 금지)는 그대로.
           plotResolve:
-            turnIndex === (input.short ? SHORT_SEED_TURN : SEED_TURN) + 1 ? arc.resolve : undefined,
+            turnIndex === (input.short ? SHORT_LAST_TURN : WIND_DOWN_TURN) || mode === "ending_natural" || mode === "ending_timeout"
+              ? arc.resolve
+              : undefined,
           themeId: theme.id,
           planetProgress,
           arcGoal: arc.goal,
