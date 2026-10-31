@@ -12,6 +12,7 @@ import Wordmark from "@/components/kid/Wordmark";
 import { markLoggedIn, saveWorldId } from "@/components/kid/world";
 import s from "./storyParent.module.css";
 import l from "./login.module.css";
+import { PRICE_LABEL, TRIAL_LABEL } from "./PayModal";
 
 type Mode = "signup" | "login";
 
@@ -185,7 +186,7 @@ export default function LoginScreen() {
 
           <div className={s.plan}>
             <span>
-              <b>월 9,900원</b> · 지금은 무료 체험
+              <b>{PRICE_LABEL}</b> · {TRIAL_LABEL}
             </span>
             <Link href={next} className={l.link}>
               돌아가기

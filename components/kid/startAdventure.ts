@@ -6,8 +6,12 @@ import { isLoggedIn, readWorldId, saveWorldId } from "./world";
 async function warmUpMic() {
   // 부모가 보는 이 화면에서 마이크 권한을 먼저 받아 둔다. 거부돼도 모험 화면의 버튼 폴백으로 진행.
   try {
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    stream.getTracks().forEach((t) => t.stop());
+    // 권한 창이 안 닫히거나 응답이 없으면 8초 뒤 그냥 진행한다(버튼이 멈춘 것처럼 보이지 않게)
+    const stream = await Promise.race([
+      navigator.mediaDevices.getUserMedia({ audio: true }),
+      new Promise<null>((resolve) => setTimeout(() => resolve(null), 8000)),
+    ]);
+    stream?.getTracks().forEach((t) => t.stop());
   } catch {
     // 권한 거부·미지원
   }

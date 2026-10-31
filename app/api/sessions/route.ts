@@ -31,7 +31,7 @@ async function continueWorldById(
 ): Promise<{ worldId: string; episodeId: string } | null> {
   const { data: latest } = await sb
     .from("episodes")
-    .select("id, episode_number, status")
+    .select("id, episode_number, status, started_at")
     .eq("world_id", worldId)
     .order("episode_number", { ascending: false })
     .limit(1)
@@ -52,7 +52,16 @@ async function continueWorldById(
   }
 
   if (latest.status !== "completed") {
-    // 아직 끝나지 않은 회차(예: 새로고침) → 그 회차를 그대로 이어간다.
+    // 아직 끝나지 않은 회차(예: 새로고침) → 그 회차를 이어간다.
+    // 단, 이미 턴이 쌓였거나 시작한 지 오래됐으면(이야기 엔진의 10분 상한에 걸려 첫 턴부터 '시간 초과'로 끝남)
+    // 같은 회차 번호로 처음부터 다시 시작한다: 턴을 비우고 시작 시각을 지금으로.
+    const { count } = await sb.from("turns").select("id", { count: "exact", head: true }).eq("episode_id", latest.id);
+    const startedMs = latest.started_at ? Date.parse(latest.started_at) : 0;
+    const stale = (count ?? 0) > 0 || !startedMs || Date.now() - startedMs > 8 * 60 * 1000;
+    if (stale) {
+      await sb.from("turns").delete().eq("episode_id", latest.id);
+      await sb.from("episodes").update({ started_at: new Date().toISOString() }).eq("id", latest.id);
+    }
     return { worldId, episodeId: latest.id };
   }
 

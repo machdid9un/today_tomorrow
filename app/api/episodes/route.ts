@@ -6,6 +6,8 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { getSupabaseServerClient } from "@/lib/db/supabaseServer";
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
@@ -15,6 +17,9 @@ export async function GET(request: NextRequest) {
 
   if (!worldId) {
     return NextResponse.json({ error: "worldId가 필요합니다." }, { status: 400 });
+  }
+  if (!UUID_RE.test(worldId)) {
+    return NextResponse.json({ error: "세계를 찾을 수 없습니다." }, { status: 404 });
   }
 
   const sb = getSupabaseServerClient();

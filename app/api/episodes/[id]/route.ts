@@ -6,6 +6,8 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { getSupabaseServerClient } from "@/lib/db/supabaseServer";
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
@@ -18,6 +20,10 @@ export async function GET(
 
   if (!id) {
     return NextResponse.json({ error: "episodeId가 필요합니다." }, { status: 400 });
+  }
+  // mock-… 같은 id는 DB에 없다(uuid가 아니면 Postgres가 500을 낸다) → 404
+  if (!UUID_RE.test(id)) {
+    return NextResponse.json({ error: "회차를 찾을 수 없습니다." }, { status: 404 });
   }
 
   const sb = getSupabaseServerClient();

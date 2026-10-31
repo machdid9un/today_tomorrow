@@ -87,7 +87,7 @@ export async function POST(request: Request) {
 
         await saveTurn(ctx, {
           turnIndex,
-          childText: correctedChildText,
+          childText, // 아이 원문을 저장한다(부모 리포트 인용·동화책용). 보정본은 LLM 입력에만 쓴다
           narration: turn.narration,
           choices: turn.choices,
           prevLatencyMs,

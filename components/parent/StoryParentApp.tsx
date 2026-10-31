@@ -12,6 +12,7 @@ import { PLANETS } from "@/components/kid/planets";
 import Wordmark from "@/components/kid/Wordmark";
 import { makeNotePdf, type NoteData } from "./notePdf";
 import { saveSeedPreset, type ParentEpisode, type SeedSectionCopy } from "./parentData";
+import PayModal, { PRICE_LABEL, TRIAL_LABEL } from "./PayModal";
 import { useParentData } from "./ParentDataProvider";
 import s from "./storyParent.module.css";
 
@@ -75,6 +76,7 @@ export default function StoryParentApp({ seedCopy, initialTab = "report", initia
   const [shelf, setShelf] = useState<string | null>(null);
   const [seed, setSeed] = useState<SeedPreset | null>(null);
   const [seedState, setSeedState] = useState<"idle" | "saving" | "saved" | "error">("idle");
+  const [payOpen, setPayOpen] = useState(false);
   const [pdfBusy, setPdfBusy] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -265,7 +267,24 @@ export default function StoryParentApp({ seedCopy, initialTab = "report", initia
     </section>
   );
 
+  // 건네주기 직후: 방금 끝난 회차(initialEpisodeId)의 관찰 노트가 아직 만들어지는 중(10~35초)이면 그 사실을 보여 준다
+  const [pendingExpired, setPendingExpired] = useState(false);
+  useEffect(() => {
+    if (!initialEpisodeId) return;
+    const t = setTimeout(() => setPendingExpired(true), 90_000); // 90초가 지나도 안 오면 평소 화면으로
+    return () => clearTimeout(t);
+  }, [initialEpisodeId]);
+  const pendingToday =
+    !pendingExpired && Boolean(initialEpisodeId && !initialEpisodeId.startsWith("mock") && !episodes.some((e) => e.id === initialEpisodeId && e.report));
   const nightView = () => {
+    if (pendingToday) {
+      return (
+        <section className={s.card} aria-live="polite">
+          <h2>오늘 이야기로 관찰 노트를 만드는 중이에요</h2>
+          <p className={s.sub}>30초쯤 걸려요. 다 되면 여기에 바로 나타나요. 그동안 아이에게 "잘 잤어?" 한마디 어때요?</p>
+        </section>
+      );
+    }
     if (!night) return <p className={s.empty}>아직 끝난 이야기가 없어요. 첫 이야기를 마치면 여기에 관찰 노트가 생겨요.</p>;
     const r = night.report;
     const info = nightOf(night.startedAt);
@@ -555,12 +574,13 @@ export default function StoryParentApp({ seedCopy, initialTab = "report", initia
       {seedCard()}
       <div className={s.plan}>
         <span>
-          <b>월 9,900원</b> · 지금은 무료 체험
+          <b>{PRICE_LABEL}</b> · {TRIAL_LABEL}
         </span>
-        <button type="button" onClick={() => goTab("settings")}>
-          사전 신청
+        <button type="button" onClick={() => setPayOpen(true)}>
+          결제
         </button>
       </div>
+      <PayModal open={payOpen} onClose={() => setPayOpen(false)} />
     </>
   );
 
@@ -909,7 +929,7 @@ function Settings({ say, goKid, childName, ageLabel }: { say: (t: string) => voi
         <div className={s.row} style={{ marginTop: 12 }}>
           요금제
           <span>
-            <b style={{ color: "#1b1f2e" }}>월 9,900원</b> · 지금은 무료 체험
+            <b style={{ color: "#1b1f2e" }}>{PRICE_LABEL}</b> · {TRIAL_LABEL}
           </span>
         </div>
       </section>

@@ -97,6 +97,21 @@ export default function ParentDataProvider({
       setToday(real ? new Date().toISOString() : MOCK_TODAY);
       setActiveKey(list.find((c) => c.key === remembered)?.key ?? list[0]?.key ?? null);
       setStatus("ready");
+
+      // 건네주기 직후에는 방금 끝난 회차(ep)의 리포트·동화책이 아직 만들어지는 중(10~35초)이라 목록에 없을 수 있다.
+      // 그 회차가 보일 때까지 3초마다 다시 불러온다(최대 60초).
+      if (real && urlEpisode && !real.episodes.some((e) => e.id === urlEpisode)) {
+        for (let i = 0; i < 20; i++) {
+          await new Promise((r) => setTimeout(r, 3000));
+          if (ctrl.signal.aborted) return;
+          const again = await fetchChildFromApi(worldId, ctrl.signal);
+          if (ctrl.signal.aborted) return;
+          if (!again) continue;
+          setKids([again]);
+          setToday(new Date().toISOString());
+          if (again.episodes.some((e) => e.id === urlEpisode)) break;
+        }
+      }
     })();
     return () => ctrl.abort();
   }, []);

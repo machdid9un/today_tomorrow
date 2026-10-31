@@ -168,7 +168,11 @@ function DoorBody({ view, setView }: { view: View; setView: (v: View) => void })
             {error}
           </p>
         ) : (
-          <p className={styles.helper}>시작한 뒤에는 화면 없이 목소리로 함께해요. 목소리는 저장하지 않아요.</p>
+          <p className={styles.helper}>
+            {starting
+              ? "마이크 허용 창이 뜨면 '허용'을 눌러 주세요. 그다음 아이에게 건네 주면 돼요."
+              : "보호자님이 버튼을 누르고 마이크를 허용한 뒤 아이에게 건네 주세요. 끝나면 오늘의 관찰 노트가 생겨요. 목소리는 저장하지 않아요."}
+          </p>
         )}
       </div>
 
